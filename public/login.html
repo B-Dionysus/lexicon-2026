@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Login · Lexicon 2026</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Login</h1>
+      <form id="loginForm">
+        <label>User Name<input name="user_name" required /></label>
+        <label>Password<input name="password" type="password" required /></label>
+        <button type="submit">Log In</button>
+        <p class="small"><a href="/signup.html">Create New Profile</a></p>
+      </form>
+      <div id="message" class="error"></div>
+    </main>
+    <script src="/config.js"></script>
+    <script src="/auth.js"></script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+node_modules/
+.git/
+.vscode/
+coverage/
+__pycache__/
+*.log
+*.zip
+awscliv2.zip
+sam.zip
+*.pem
+public/
+server.js
+test/

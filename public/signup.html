@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Create Profile · Lexicon 2026</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Create New Profile</h1>
+      <form id="signupForm">
+        <label>User Name<input name="user_name" required /></label>
+        <label>Password<input name="password" type="password" required /></label>
+        <label>Repeat Password<input name="repeat_password" type="password" required /></label>
+        <label>Researcher Name<input name="researcher_name" required /></label>
+        <label>Researcher Bio<textarea name="researcher_bio" required></textarea></label>
+        <button type="submit">Create Profile</button>
+      </form>
+      <div id="message" class="error"></div>
+    </main>
+    <script src="/config.js"></script>
+    <script src="/auth.js"></script>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "lexicon-2026-lambda",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lambda-only dependencies for Lexicon",
+  "dependencies": {
+    "aws-sdk": "^2.164.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.1"
+  }
+}

@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Lexicon 2026 serverless application
+
+Parameters:
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Default: replace-me
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: nodejs22.x
+    Environment:
+      Variables:
+        WORDS_TABLE: lexicon-2026-words
+        PROFILES_TABLE: lexicon-2026-profiles
+        JWT_SECRET: !Ref JwtSecret
+
+Resources:
+  LexiconApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowOrigin: "'*'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowMethods: "'OPTIONS,GET,POST,PUT,DELETE,PATCH,HEAD'"
+
+  LexiconFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handler.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WordsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ProfilesTable
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LexiconApi
+            Path: /{proxy+}
+            Method: any
+
+  WordsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: lexicon-2026-words
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: word_id
+          AttributeType: S
+        - AttributeName: game_id
+          AttributeType: S
+        - AttributeName: word
+          AttributeType: S
+      KeySchema:
+        - AttributeName: word_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: game_id-word-index
+          KeySchema:
+            - AttributeName: game_id
+              KeyType: HASH
+            - AttributeName: word
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  ProfilesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: lexicon-2026-profiles
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_name
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_name
+          KeyType: HASH
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint for Lexicon 2026
+    Value: !Sub "https://${LexiconApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"

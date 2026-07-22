@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lexicon 2026</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="top-bar">
+      <div class="button-row">
+        <button id="profileButton">Login</button>
+        <button id="aboutButton">What is this?</button>
+        <button id="newWordButton">New Word</button>
+      </div>
+    </header>
+    <main>
+      <h1>Lexicon 2026</h1>
+      <p class="subtitle">A collaborative dictionary game for researchers.</p>
+      <div id="wordList" class="word-list"></div>
+    </main>
+
+    <div id="aboutModal" class="modal hidden">
+      <div class="modal-card">
+        <button class="close-button" id="closeAbout">×</button>
+        <h2>About Lexicon</h2>
+        <p>Lexicon is a game in which an arbitrary number of players pretend to be researchers compiling a dictionary. In each round every player will choose an existing, undefined word starting with the next letter in alphabetical order or (if there are none) create a new word starting with that letter and write a definition for it. This definition will include two new words that start with later letters (if there are any).</p>
+      </div>
+    </div>
+
+    <script src="/config.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

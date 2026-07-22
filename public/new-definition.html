@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>New Definition · Lexicon 2026</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <p><a href="/index.html">Home</a></p>
+      <h1>New Definition</h1>
+      <form id="definitionForm">
+        <label>Word<input name="word" id="word" required /></label>
+        <label>Definition<textarea name="definition" required></textarea></label>
+        <label>New Word 1<input name="new_word_1" /></label>
+        <label>New Word 2<input name="new_word_2" /></label>
+        <button type="submit">Save</button>
+      </form>
+      <div id="message" class="error"></div>
+    </main>
+    <script src="/config.js"></script>
+    <script src="/new-definition.js"></script>
+  </body>
+</html>
