@@ -45,6 +45,8 @@ function getCurrentUser(event) {
 
 async function getProfile(userName) {
   // Retrieve a profile from DynamoDB
+  if (!userName) return null;
+
   debugLog('getProfile: fetching', userName);
   const result = await dynamodb.get({ TableName: TABLE_PROFILES, Key: { user_name: userName } }).promise();
   debugLog('getProfile: result', !!result && !!result.Item);
@@ -218,7 +220,7 @@ async function handleCreateWord(event) {
  }
  
  if (typeof new_2 === 'string' && new_2.length > 0) {
-  const newItem1 = {
+  const newItem2 = {
     word_id: uuidv4(),
     word: new_2,
     previous_word_id: wordId,
