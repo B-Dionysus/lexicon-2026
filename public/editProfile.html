@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Edit Profile</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="top-bar">
+      <div class="button-row">
+        <button id="homeButton" onclick="window.location.href='/index.html'">Home</button>
+      </div>
+    </header>
+    <main>
+      <h1>Edit Profile</h1>
+      <form id="editProfileForm">
+        <label>Researcher Name<input name="researcher_name" id="researcher_name" required /></label>
+        <label>Researcher Bio<textarea name="researcher_bio" id="researcher_bio" required></textarea></label>
+        <hr />
+        <label>User Name<input name="user_name" id="user_name" readonly /></label>
+        Leave Password blank to keep the current password.
+        <label>Password<input name="password" type="password" /></label>
+        <label>Repeat Password<input name="repeat_password" type="password" /></label>
+        <button type="submit">Save Changes</button>
+      </form>
+      <div id="message" class="error"></div>
+    </main>
+    <script src="/config.js"></script>
+    <script type="module" src="/editProfile.js"></script>
+  </body>
+</html>

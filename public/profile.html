@@ -7,11 +7,24 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <header class="top-bar">
+      <div class="button-row">
+        <button id="homeButton" onclick="window.location.href='/index.html'">Home</button>
+        <button id="editProfileButton">Edit Profile</button>
+      </div>
+    </header>
     <main>
-      <p><a href="/index.html">Home</a></p>
       <div id="profileContent"></div>
     </main>
+
+    <div id="loadingModal" class="modal hidden">
+      <div class="modal-card">
+        <h2>Loading</h2>
+        <p>Please wait while we fetch all of your lovely data!</p>
+      </div>
+    </div>
+
     <script src="/config.js"></script>
-    <script src="/profile.js"></script>
+    <script type="module" src="/profile.js"></script>
   </body>
 </html>

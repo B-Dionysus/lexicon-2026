@@ -152,8 +152,6 @@ async function handleGetWords(event) {
 }
 
 async function handleGetWord(event) {
-  console.log('Path Parameters Received:', JSON.stringify(event.pathParameters));
-  console.log('Query Parameters Received:', JSON.stringify(event.queryStringParameters));
   let wordId = null;
   // 1. Check if we have the greedy proxy path string
   if (event.pathParameters && event.pathParameters.proxy) {
@@ -173,10 +171,15 @@ async function handleGetWord(event) {
     return error('Word not found', 404);
   }
   const previousWord = word.previous_word_id ? await getWord(word.previous_word_id) : null;
-  
+  const profile = await getProfile(word.user_name);
+  debugLog("Profile: ", profile)
+  var researcher_name = "TBD";
+  if(profile?.researcher_name) researcher_name = profile?.researcher_name;
+  debugLog("Profile: ", researcher_name)
   return success({ 
     word: { 
-      ...word, 
+      ...word,
+      researcher_name, 
       previous_word: previousWord ? { word_id: previousWord.word_id, word: previousWord.word } : null 
     } 
   });
@@ -186,20 +189,23 @@ async function handleCreateWord(event) {
   const user = getCurrentUser(event);
   if (!user) return error('Authentication required', 401);
   const body = extractBody(event);
+  debugLog("body=", body)
   const wordText = (body.word || '').trim().toLowerCase();
   if (!wordText) return error('Word is required', 400);
   const gameId = normalizeGameId(body.game_id || (event.queryStringParameters && event.queryStringParameters.game_id));
-  const wordId = uuidv4();
+  const wordId = body.word_id || uuidv4();
   const now = new Date().toISOString();
   const new_1 =  (body.new_word_1 || '').trim().toLowerCase();
   const new_2 =  (body.new_word_2 || '').trim().toLowerCase();
+  const new_1_uuid = uuidv4()
+  const new_2_uuid = uuidv4() 
   const item = {
     word_id: wordId,
     word: wordText,
     user_name: user.user_name,
     definition: body.definition || '',
-    new_word_1: new_1,
-    new_word_2: new_2,
+    new_word_1: new_1_uuid,
+    new_word_2: new_2_uuid,
     previous_word_id: body.previous_word_id || null,
     created_at: now,
     updated_at: now,
@@ -209,7 +215,7 @@ async function handleCreateWord(event) {
 
  if (typeof new_1 === 'string' && new_1.length > 0) {
   const newItem1 = {
-    word_id: uuidv4(),
+    word_id: new_1_uuid,
     word: new_1,
     previous_word_id: wordId,
     created_at: now,
@@ -221,7 +227,7 @@ async function handleCreateWord(event) {
  
  if (typeof new_2 === 'string' && new_2.length > 0) {
   const newItem2 = {
-    word_id: uuidv4(),
+    word_id: new_2_uuid,
     word: new_2,
     previous_word_id: wordId,
     created_at: now,
@@ -270,7 +276,9 @@ async function handleUpdateProfile(event) {
   const user = getCurrentUser(event);
   if (!user) return error('Authentication required', 401);
   const body = extractBody(event);
-  const userName = event.pathParameters && event.pathParameters.user_name;
+  const userName = body.user_name;
+  debugLog("body=", body)
+  debugLog("event=", event)
   if (!userName) return error('user_name is required', 400);
   const existing = await getProfile(userName);
   if (!existing) return error('Profile not found', 404);
@@ -327,10 +335,10 @@ async function route(event) {
   if (method === 'GET' && path.startsWith('/profiles/')) {
     return handleGetProfile(event);
   }
-  if (method === 'PUT' && path.startsWith('/profiles/')) {
+  if ((method === 'PUT' || method === 'POST') && path.startsWith('/profiles/')) {
     return handleUpdateProfile(event);
   }
-  return error('Not found', 404);
+  return error("Path "+path+" not found", 404);
 }
 
 exports.handler = async (event) => {

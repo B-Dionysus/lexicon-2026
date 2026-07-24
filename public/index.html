@@ -16,7 +16,7 @@
     </header>
     <main>
       <h1>Lexicon 2026</h1>
-      <p class="subtitle">A collaborative dictionary game for researchers.</p>
+      <p class="subtitle">A collaborative dictionary game.</p>
       <div id="wordList" class="word-list"></div>
     </main>
 
@@ -27,8 +27,16 @@
         <p>Lexicon is a game in which an arbitrary number of players pretend to be researchers compiling a dictionary. In each round every player will choose an existing, undefined word starting with the next letter in alphabetical order or (if there are none) create a new word starting with that letter and write a definition for it. This definition will include two new words that start with later letters (if there are any).</p>
       </div>
     </div>
+    </main>
+
+    <div id="loadingModal" class="modal hidden">
+      <div class="modal-card">
+        <h2>Loading</h2>
+        <p>Please wait while we fetch all of your lovely data!</p>
+      </div>
+    </div>
 
     <script src="/config.js"></script>
-    <script src="/app.js"></script>
+    <script type="module" src="/app.js"></script>
   </body>
 </html>

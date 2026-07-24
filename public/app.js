@@ -4,28 +4,8 @@ console.log('[FRONTEND app] initializing app.js');
 // Store the current page state so different functions can share it.
 const state = { words: [], profile: null, gameId: getGameId(), token: localStorage.getItem('lexicon-token') || null };
 
-// Read the username stored inside the login token, if one exists.
-function getCurrentUserNameFromToken(token) {
-  if (!token || typeof token !== 'string') return null;
-  const parts = token.split('.');
-  if (parts.length < 2) return null;
-  const payload = parts[1];
-  try {
-    // 1. Fix the URL-safe characters
-    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    // 2. Decode the base64 string and handle UTF-8 characters safely
-    const decoded = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    );  
-    const data = JSON.parse(decoded);
-    return data.user_name || null;
-  } catch (_err) {
-    return null;
-  }
-}
+import { getCurrentUserNameFromToken } from './frontendUtils.js';
+import { buildHref } from './frontendUtils.js';
 
 // Get the current game id from the page URL, such as ?game_id=abc123.
 function getGameId() {
@@ -40,14 +20,6 @@ function setQueryParam(name, value) {
   return url.toString();
 }
 
-// Build a full link to another page while preserving the current game.
-function buildHref(path, preserveGame = true) {
-  const url = new URL(path, window.location.origin);
-  if (preserveGame && state.gameId) {
-    url.searchParams.set('game_id', state.gameId);
-  }
-  return url.pathname + url.search;
-}
 
 // Make the first letter uppercase for nicer display.
 function capitalize(value) {
@@ -70,15 +42,15 @@ function renderWordList(words) {
       const authorName = word.researcher_name || word.user_name || 'Unknown';
       return `
         <article class="card">
-          <h2><a href="${buildHref('/defined-word.html?word_id=' + word.word_id)}">${title}</a></h2>
+          <h2><a href="${buildHref('/defined-word.html?word_id=' + word.word_id, state.gameId)}">${title}</a></h2>
           <div><a href="${buildHref('/profile.html?user_name=' + encodeURIComponent(word.user_name))}">By ${authorName}</a></div>
           <p>${(word.definition || '').slice(0, 200)}${(word.definition || '').length > 200 ? '…' : ''}</p>
         </article>`;
     }
     return `
       <article class="card">
-        <h2><a href="${buildHref('/new-definition.html?word_id=' + word.word_id)}">${title}</a></h2>
-        <p><a href="${buildHref('/new-definition.html?word_id=' + word.word_id)}">Click here to define this word</a></p>
+        <h2><a href="${buildHref('/new-definition.html?word_id=' + word.word_id, state.gameId)}">${title}</a></h2>
+        <p><a href="${buildHref('/new-definition.html?word_id=' + word.word_id, state.gameId)}">Click here to define this word</a></p>
       </article>`;
   }).join('');
 }
@@ -87,14 +59,17 @@ function renderWordList(words) {
 async function loadWords() {
   // Fetch words for the current game. Lots of logging to trace issues.
   console.log('[FRONTEND app] loadWords: apiBase=', window.APP_CONFIG && window.APP_CONFIG.apiBase, 'gameId=', state.gameId);
+  document.getElementById('loadingModal').classList.remove('hidden');
   const response = await fetch(`${window.APP_CONFIG.apiBase}/words?game_id=${encodeURIComponent(state.gameId)}`, { headers: state.token ? { Authorization: `Bearer ${state.token}` } : {} });
   console.log('[FRONTEND app] loadWords: fetch completed, status=', response.status);
   const data = await response.json().catch((err) => {
     console.error('[FRONTEND app] loadWords: json parse error', err);
+    document.getElementById('loadingModal').classList.add('hidden');
     return {};
   });
   console.log('[FRONTEND app] loadWords: data values', Object.values(data || {}));
   state.words = data.words || [];
+  document.getElementById('loadingModal').classList.add('hidden');
   renderWordList(state.words);
 }
 
@@ -106,10 +81,10 @@ function updateProfileButton() {
   button.textContent = isLoggedIn ? 'Profile' : 'Login';
   button.onclick = () => {
     if (isLoggedIn) {
-      window.location.href = buildHref(`/profile.html?user_name=${encodeURIComponent(currentUserName)}`);
+      window.location.href = buildHref(`/profile.html?user_name=${encodeURIComponent(currentUserName)}`, state.gameId);
       return;
     }
-    window.location.href = buildHref('/login.html');
+    window.location.href = buildHref('/login.html', state.gameId);
   };
 }
 
@@ -119,7 +94,7 @@ window.addEventListener('DOMContentLoaded', () => {
   updateProfileButton();
   document.getElementById('aboutButton').addEventListener('click', () => document.getElementById('aboutModal').classList.remove('hidden'));
   document.getElementById('closeAbout').addEventListener('click', () => document.getElementById('aboutModal').classList.add('hidden'));
-  document.getElementById('newWordButton').addEventListener('click', () => window.location.href = buildHref('/new-definition.html'));
+  document.getElementById('newWordButton').addEventListener('click', () => window.location.href = buildHref('/new-definition.html', state.gameId));
   loadWords().catch(() => {
     document.getElementById('wordList').innerHTML = '<div class="empty">Unable to load words yet.</div>';
   });
