@@ -1,4 +1,15 @@
+
+// Debug helper: unified logging prefix for Lambda
+function debugLog(...args) {
+  try {
+    console.log('[LAMBDA DEBUG]', ...args);
+  } catch (e) {
+    // ignore logging errors
+  }
+}
+
 function normalizeGameId(gameId) {
+  debugLog((gameId || '').trim() || 'default');
   return (gameId || '').trim() || 'default';
 }
 
@@ -90,3 +101,26 @@ module.exports = {
   success,
   error
 };
+
+
+function getCurrentUserNameFromToken(token) {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length < 2) return null;
+  const payload = parts[1];
+  try {
+    // 1. Fix the URL-safe characters
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    // 2. Decode the base64 string and handle UTF-8 characters safely
+    const decoded = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );  
+    const data = JSON.parse(decoded);
+    return data.user_name || null;
+  } catch (_err) {
+    return null;
+  }
+}

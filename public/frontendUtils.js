@@ -31,21 +31,29 @@ export function buildHref(path, gameID, preserveGame = true) {
 }
 
 export function addUrlsToDefinition(str, wordMap, gameId) {
-    // 1. We can now grab the words directly from the object keys
-    const words = Object.keys(wordMap || {});
-    const ids = Object.values(wordMap || {});
-    // Quick guard in case the object is empty or null
+    if(!str || typeof str !== 'string' || !wordMap || typeof wordMap !== 'object') return str;
+    if(!wordMap || Object.keys(wordMap).length === 0) return str;
+
+    // 1. Create a new map where all keys are guaranteed to be lowercase
+    const lowerCaseMap = {};
+    for (const [key, value] of Object.entries(wordMap || {})) {
+        lowerCaseMap[key.toLowerCase()] = value;
+    }
+
+    const words = Object.keys(lowerCaseMap);
     if (words.length === 0) return str; 
 
-    // 2. Escape special characters and build the regex
+    // 2. Escape special characters for the regex
     const safeWords = words.map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    const regex = new RegExp(`\\b(${safeWords.join('|')})\\b`, 'g');
+    
+    // 3. Add 'i' to the flags ('gi' instead of 'g') to make the search case-insensitive
+    const regex = new RegExp(`\\b(${safeWords.join('|')})\\b`, 'gi');
 
-    // 3. Run the replacement
     const result = str.replace(regex, (match) => {
-      // Look up the ID directly from the hash object
-      const wordId = wordMap[match];
+      // 4. Force the matched text to lowercase so it finds the correct ID in our normalized map
+      const wordId = lowerCaseMap[match.toLowerCase()];
       
+      // We still return {match} so the original casing is preserved on the screen!
       return `<a href="${buildHref('/defined-word.html?word_id=' + wordId, gameId)}">${match}</a>`;
     });
     

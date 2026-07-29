@@ -16,7 +16,7 @@
     </header>
     <main>
       <h1>Lexicon 2026</h1>
-      <p class="subtitle">A collaborative dictionary game.</p>
+      <p class="subtitle" id="subtitle">A collaborative dictionary game.</p>
       <div id="wordList" class="word-list"></div>
     </main>
 
@@ -24,15 +24,24 @@
       <div class="modal-card">
         <button class="close-button" id="closeAbout">×</button>
         <h2>About Lexicon</h2>
-        <p>Lexicon is a game in which an arbitrary number of players pretend to be researchers compiling a dictionary. In each round every player will choose an existing, undefined word starting with the next letter in alphabetical order or (if there are none) create a new word starting with that letter and write a definition for it. This definition will include two new words that start with later letters (if there are any).</p>
+        <p>Lexicon is a game in which an arbitrary number of players pretend to be researchers compiling a dictionary. 
+          In each round every player will choose an existing, undefined word starting with the next letter in alphabetical 
+          order or (if there are none) create a new word starting with that letter and write a definition for it. 
+          This definition will include two new words that start with later letters (if there are any).</p>
+          <p>A few ground rules:</p>
+          <ul>
+            <li>Every fact stated in a researcher's bio is canon.</li>
+            <li>Every fact stated in a definition is canon.</li>
+            <li>Opinions in definitions can be frequent and contradictory.</li>
+            <li>Do not define a word that you have introduced.</li>
+          </ul>
       </div>
     </div>
     </main>
 
     <div id="loadingModal" class="modal hidden">
-      <div class="modal-card">
-        <h2>Loading</h2>
-        <p>Please wait while we fetch all of your lovely data!</p>
+      <div class="loading-card">
+        <img src="assets/Wedges@1x-25.0s-200px-200px.gif" alt="Loading..." />
       </div>
     </div>
 

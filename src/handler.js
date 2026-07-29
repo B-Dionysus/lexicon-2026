@@ -14,6 +14,7 @@ const {
 
 const dynamodb = new AWS.DynamoDB.DocumentClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const TABLE_WORDS = process.env.WORDS_TABLE || 'lexicon-2026-words';
+const TABLE_GAMES = process.env.GAMES_TABLE || 'lexicon-2026-games';
 const TABLE_PROFILES = process.env.PROFILES_TABLE || 'lexicon-2026-profiles';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 
@@ -77,6 +78,12 @@ async function getWord(wordId) {
   debugLog('getWord: fetching', wordId);
   const result = await dynamodb.get({ TableName: TABLE_WORDS, Key: { word_id: wordId } }).promise();
   debugLog('getWord: found', !!result && !!result.Item);
+  return result.Item || null;
+}
+async function getGame(gameId){
+  debugLog('getGame: gameID=', gameId);
+  const result = await dynamodb.get({ TableName: TABLE_GAMES, Key: { game_id: gameId } }).promise();
+  debugLog('getGame: found', result.Item);
   return result.Item || null;
 }
 
@@ -204,8 +211,10 @@ async function handleCreateWord(event) {
     word: wordText,
     user_name: user.user_name,
     definition: body.definition || '',
-    new_word_1: new_1_uuid,
-    new_word_2: new_2_uuid,
+    new_word_1: new_1,
+    new_word_2: new_2,
+    new_word_1_id: new_1_uuid,
+    new_word_2_id: new_2_uuid,
     previous_word_id: body.previous_word_id || null,
     created_at: now,
     updated_at: now,
@@ -272,6 +281,17 @@ async function handleGetProfile(event) {
   return success({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at }, words: authoredWords });
 }
 
+async function handleGetGame(event) {
+  debugLog("in handleGetGame, event=", event.queryStringParameters?.game_id)
+  const gameId = normalizeGameId(event.queryStringParameters?.game_id);
+  if (!gameId) return error('game_id is required', 400);
+  debugLog("calling getgame with gameId=", gameId);
+  const data = await getGame(gameId);
+  debugLog("data= ", data);
+  subtitle = data.subtitle;
+  return success({ game: { game_id: gameId, subtitle: subtitle } });
+}
+
 async function handleUpdateProfile(event) {
   const user = getCurrentUser(event);
   if (!user) return error('Authentication required', 401);
@@ -313,6 +333,9 @@ async function route(event) {
   debugLog('route: incoming', { method, path });
   if (method === 'OPTIONS') {
     return success({});
+  }
+  if (method === 'GET' && path === '/game') {
+    return handleGetGame(event);
   }
   if (method === 'GET' && path === '/words') {
     return handleGetWords(event);

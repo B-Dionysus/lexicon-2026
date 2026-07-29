@@ -44,18 +44,24 @@ async function loadProfile() {
 }
 
 // Update the top-right button so it shows or hides the Edit Profile button depending on auth state.
-function updateProfileButton() {
-  const button = document.getElementById('editProfileButton');
+function updateButtons() {
+  const profileButton = document.getElementById('editProfileButton');
   const currentUserName = getCurrentUserNameFromToken(token);
   const isLoggedIn = Boolean(currentUserName == profileName);
-  button.style.display = isLoggedIn ? 'block' : 'none';
-  button.onclick = () => {
+  profileButton.style.display = isLoggedIn ? 'block' : 'none';
+  profileButton.onclick = () => {
     if (isLoggedIn) {
       window.location.href = buildHref(`/editProfile.html?user_name=${encodeURIComponent(currentUserName)}`, gameId);
       return;
     }
     window.location.href = buildHref('/login.html', gameId);
   };
+  const logOutButton = document.getElementById('logOutButton');
+  logOutButton.style.display = isLoggedIn ? 'block' : 'none';
+  logOutButton.onclick = () => {
+    localStorage.removeItem('lexicon-token');
+    window.location.href = buildHref('/index.html', gameId);
+  };
 }
 window.addEventListener('DOMContentLoaded', loadProfile);
-updateProfileButton();
+updateButtons();

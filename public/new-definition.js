@@ -50,6 +50,8 @@ window.addEventListener('DOMContentLoaded', () => {
       return;
     }
     const data = Object.fromEntries(new FormData(form).entries());
+    const submitButton = document.getElementById('submit');
+    submitButton.disabled = true;
     try {
       console.log('[FRONTEND new-definition] submitting', data);
       const response = await fetch(`${window.APP_CONFIG.apiBase}/words`, {

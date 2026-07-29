@@ -1,44 +1,65 @@
-import {addUrlsToDefinition} from './frontendUtils.js';
-// This file loads and displays the details for one defined word.
+import { addUrlsToDefinition } from './frontendUtils.js';
+
 console.log('[FRONTEND defined-word] loaded');
 
-// Read the page URL so we know which word and game to show.
 const params = new URLSearchParams(window.location.search);
 const gameId = params.get('game_id') || 'default';
 const wordId = params.get('word_id');
 const token = localStorage.getItem('lexicon-token');
+const wcontent = 'wordContent';
 
-// Fetch the chosen word from the API and show it on the page.
-async function loadWord() {
+// 1. Extracted purely for data fetching (No UI logic here)
+async function fetchWord(id) {
+  if (!id) return null; // Guard against empty IDs
+  
+  const response = await fetch(
+    `${window.APP_CONFIG.apiBase}/words/${encodeURIComponent(id)}?game_id=${encodeURIComponent(gameId)}`, 
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch word: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function renderWord() {
+  const content = document.getElementById(wcontent);
+  const loadingModal = document.getElementById('loadingModal');
+
   try {
-    console.log('[FRONTEND defined-word] loadWord fetching', wordId, gameId);
-    document.getElementById('loadingModal').classList.remove('hidden');
-    const response = await fetch(`${window.APP_CONFIG.apiBase}/words/${encodeURIComponent(wordId)}?game_id=${encodeURIComponent(gameId)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-    console.log('[FRONTEND defined-word] loadWord response status', response.status);
-    const data = await response.json().catch((err) => {
-      console.error('[FRONTEND defined-word] json parse error', err);
-      document.getElementById('loadingModal').classList.add('hidden');
-      return {};
-    });
-    const content = document.getElementById('wordContent');
-    if (!response.ok) {
-      content.innerHTML = '<p class="error">Unable to load word.</p>';
-      document.getElementById('loadingModal').classList.add('hidden');
-      return;
+    // Show modal once at the very beginning
+    loadingModal.classList.remove('hidden');
+
+    const main_word_data = await fetchWord(wordId);
+    const wordInfo = main_word_data?.word || {};
+    const new_word_hash = {};
+    if (wordInfo) {
+      new_word_hash[wordInfo.new_word_1] = wordInfo.new_word_1_id;
+      new_word_hash[wordInfo.new_word_2] = wordInfo.new_word_2_id;
     }
-    const word = data.word || {};
-    const definition = addUrlsToDefinition(word.definition || '', new_word_hash || {}, gameId);
-    // const authorName = word.researcher_name || 'Unknown';
+
+    // 4. Parse definition and render
+    const definition = addUrlsToDefinition(wordInfo.definition, new_word_hash, gameId);
+    const capitalizedWord = wordInfo.word ? wordInfo.word.charAt(0).toUpperCase() + wordInfo.word.slice(1) : '';
+    const authorUrl = `/profile.html?user_name=${encodeURIComponent(wordInfo.user_name || '')}${gameId ? '&game_id=' + encodeURIComponent(gameId) : ''}`;
+
     content.innerHTML = `
-      <h1>${word.word ? word.word.charAt(0).toUpperCase() + word.word.slice(1) : ''}</h1>
-      <p>By <a href="/profile.html?user_name=${encodeURIComponent(word.user_name || '')}${gameId ? '&game_id=' + encodeURIComponent(gameId) : ''}">${word.researcher_name}</a></p>
-      <p>${(word.definition || '').replace(/\n/g, '<br />')}</p>
+      <h1>${capitalizedWord}</h1>
+      <p>By <a href="${authorUrl}">${wordInfo.researcher_name || 'Unknown'}</a></p>
+      <p>${definition}</p>
     `;
-    document.getElementById('loadingModal').classList.add('hidden');
-    console.log('[FRONTEND defined-word] rendered word', word.word_id || wordId);
+
+    console.log('[FRONTEND defined-word] rendered word', wordInfo.word_id || wordId);
+
   } catch (err) {
-    console.error('[FRONTEND defined-word] loadWord exception', err);
+    console.error('[FRONTEND defined-word] render exception', err);
+    content.innerHTML = '<p class="error">Unable to load word.</p>';
+  } finally {
+    // Always hide the loading modal at the end, whether it succeeded or failed
+    loadingModal.classList.add('hidden');
   }
 }
 
-window.addEventListener('DOMContentLoaded', loadWord);
+window.addEventListener('DOMContentLoaded', renderWord);
