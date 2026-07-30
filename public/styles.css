@@ -21,7 +21,7 @@ button.secondary { background: var(--accent-2); }
 .subtitle { color: #5d5d5d; }
 .empty { font-style: italic; color: #6b6b6b; }
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; padding: 1rem; }
-.modal.hidden { display: none; }
+.hidden { display: none; }
 .modal-card { background: white; width: min(700px, 100%); padding: 1.5rem; border-radius: 12px; position: relative; }
 .loading-card { background: rgba(255, 255, 255, 0); width: min(700px, 100%); padding: 1.5rem; border-radius: 0px; position: relative; }
 .close-button { position: absolute; top: 0.75rem; right: 0.75rem; background: transparent; color: #444; border: none; padding: 0.25rem 0.5rem; }
@@ -32,3 +32,10 @@ textarea { min-height: 120px; }
 input.invalid, textarea.invalid { border-color: #b33; background: #fdeaea; }
 .error { color: #b33; font-weight: 600; }
 .small { font-size: 0.95rem; color: #666; }
+/* Automatically styles any input when JS sets readOnly to true */
+input:read-only, 
+textarea:read-only {
+  background-color: #f5f5f5; /* Light grey */
+  color: #666;               /* Slightly dimmer text color */
+  cursor: not-allowed;       /* Changes cursor to show it's locked */
+}

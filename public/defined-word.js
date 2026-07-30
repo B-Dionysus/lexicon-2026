@@ -1,4 +1,5 @@
 import { addUrlsToDefinition } from './frontendUtils.js';
+import {getCurrentUserNameFromToken} from './frontendUtils.js';
 
 console.log('[FRONTEND defined-word] loaded');
 
@@ -24,6 +25,20 @@ async function fetchWord(id) {
   return response.json();
 }
 
+function updateEditButton(wordInfo) {
+  const editButton = document.getElementById('editWordButton');
+  if (!editButton) return;
+  const currentUser = getCurrentUserNameFromToken(token);
+  if (currentUser == wordInfo.user_name) {
+    editButton.classList.remove('hidden');
+    editButton.onclick = () => {
+      window.location.href = `/new-definition.html?word_id=${encodeURIComponent(wordId)}${gameId ? '&game_id=' + encodeURIComponent(gameId) : ''}`;
+    };
+  } else {
+    editButton.classList.add('hidden');
+  }
+}
+
 async function renderWord() {
   const content = document.getElementById(wcontent);
   const loadingModal = document.getElementById('loadingModal');
@@ -38,6 +53,7 @@ async function renderWord() {
     if (wordInfo) {
       new_word_hash[wordInfo.new_word_1] = wordInfo.new_word_1_id;
       new_word_hash[wordInfo.new_word_2] = wordInfo.new_word_2_id;
+      updateEditButton(wordInfo)
     }
 
     // 4. Parse definition and render

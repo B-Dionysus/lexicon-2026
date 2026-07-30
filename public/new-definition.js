@@ -27,8 +27,25 @@ async function loadExistingWord() {
       return {};
     });
     if (!response.ok) return;
-    const field = document.getElementById('word');
-    if (field) field.value = data.word && data.word.word || '';
+    const wordInfo = data?.word || {};
+
+    // 1. Core word info
+    const wordField = document.getElementById('word');
+    if (wordField) wordField.value = wordInfo.word ?? '';
+
+    const defField = document.getElementById('definition');
+    if (defField) defField.value = wordInfo.definition ?? '';
+
+    ['new_word_1', 'new_word_2'].forEach(id => {
+      const field = document.getElementById(id);
+      if (field) {
+        field.value = wordInfo[id] ?? '';
+        if (wordInfo[id]?.length > 0) {
+          field.readOnly = true;
+          field.title = "This related word is locked and cannot be edited.";
+        }
+      }
+    });
   } catch (err) {
     console.error('[FRONTEND new-definition] loadExistingWord exception', err);
   }
