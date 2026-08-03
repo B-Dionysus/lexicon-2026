@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>New Definition · Lexicon 2026</title>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles/buttons.css" />
   </head>
   <body>   
     <header class="top-bar">
       <div class="button-row">
-        <button id="homeButton" onclick="window.location.href='/index.html'">Home</button>
+        <button class='btn' id="homeButton" onclick="window.location.href='/index.html'">Home</button>
       </div>
     </header>
     <main>
@@ -20,11 +21,11 @@
         <label>Definition<textarea name="definition" id="definition" required></textarea></label>
         <label>New Word 1<input name="new_word_1" id="new_word_1" /></label>
         <label>New Word 2<input name="new_word_2" id="new_word_2" /></label>
-        <button id="submit" type="submit">Save</button>
+        <button class='btn' id="submit" type="submit">Save</button>
       </form>
       <div id="message" class="error"></div>
     </main>
     <script src="/config.js"></script>
-    <script src="/new-definition.js"></script>
+    <script type="module" src="/new-definition.js"></script>
   </body>
 </html>

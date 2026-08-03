@@ -59,3 +59,22 @@ export function addUrlsToDefinition(str, wordMap, gameId) {
     
     return result;
 }
+
+export function initGlobalLoader() {
+  // Guard check: don't inject it if it's already written hardcoded in the HTML
+  if (document.getElementById('loadingModal')) return;
+
+  const modal = document.createElement('div');
+  modal.id = 'loadingModal';
+  modal.className = 'modal hidden';
+  modal.innerHTML = `
+    <div class="loading-card">
+      <div class="archive-indexer"></div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+// Run it immediately when the DOM is ready
+document.addEventListener('DOMContentLoaded', initGlobalLoader);

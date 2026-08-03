@@ -5,23 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Defined Word · Lexicon 2026</title>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles/buttons.css" />
   </head>
   <body>
     <header class="top-bar">
       <div class="button-row">
-        <button id="homeButton" onclick="window.location.href='/index.html'">Home</button>
-        <button id="editWordButton" class="hidden">Edit Word</button>
+        <button class='btn' id="homeButton" onclick="window.location.href='/index.html'">Home</button>
+        <button class='btn' id="editWordButton" class="hidden">Edit Word</button>
     </header>
 
     <main>
       <div id="wordContent"></div>
     </main>
-
-    <div id="loadingModal" class="modal hidden">
-      <div class="loading-card">
-        <img src="assets/Wedges@1x-25.0s-200px-200px.gif" alt="Loading..." />
-      </div>
-    </div>
 
     <script src="/config.js"></script>
     <script type="module" src="/defined-word.js"></script>

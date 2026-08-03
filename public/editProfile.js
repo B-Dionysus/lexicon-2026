@@ -1,4 +1,5 @@
 // This file handles login and signup on the auth pages.
+import { initGlobalLoader } from './frontendUtils.js';
 console.log('[FRONTEND editProfile] editProfile.js loaded');
 
 // Read the current game id from the URL so we can keep the user in the same game.
@@ -80,6 +81,7 @@ async function updateProfileForm() {
   if (field3) field3.value = data.profile && data.profile.user_name;
 }
 
+initGlobalLoader();
 // Start the right form handler when the page loads.
 if (document.getElementById('editProfileForm')) submitProfile('editProfileForm', 'profiles/');
 // Run this once the page HTML has finished loading.

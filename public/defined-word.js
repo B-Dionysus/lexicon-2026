@@ -1,6 +1,6 @@
 import { addUrlsToDefinition } from './frontendUtils.js';
 import {getCurrentUserNameFromToken} from './frontendUtils.js';
-
+import { initGlobalLoader } from './frontendUtils.js';
 console.log('[FRONTEND defined-word] loaded');
 
 const params = new URLSearchParams(window.location.search);
@@ -77,5 +77,5 @@ async function renderWord() {
     loadingModal.classList.add('hidden');
   }
 }
-
+initGlobalLoader();
 window.addEventListener('DOMContentLoaded', renderWord);

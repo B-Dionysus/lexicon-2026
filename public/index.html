@@ -5,15 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lexicon 2026</title>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles/buttons.css" />
   </head>
-  <body>
+  <body data-theme="luxe-shine">
     <header class="top-bar">
       <div class="button-row">
-        <button id="profileButton">Login</button>
-        <button id="aboutButton">What is this?</button>
-        <button id="newWordButton">New Word</button>
+        <button class='btn' id="profileButton">Login</button>
+        <button class='btn' id="aboutButton">What is this?</button>
+        <button class='btn' id="newWordButton">New Word</button>
       </div>
     </header>
+      <!-- A quick dropdown switcher control panel -->
+    <!-- <div class="theme-switcher-panel" style="margin: 20px; padding: 10px; background: #eee; border-radius: 5px;">
+      <label for="themeSelector"><strong>Button UI Theme:</strong></label>
+      <select id="themeSelector">
+        <option value="sleek-line">Sleek Underline</option>
+        <option value="luxe-shine">Luxe Shine</option>
+        <option value="gradient-tint">Gradient Tint</option>
+      </select>
+    </div> -->
     <main>
       <h1>Lexicon 2026</h1>
       <p class="subtitle" id="subtitle">A collaborative dictionary game.</p>
@@ -22,28 +32,23 @@
 
     <div id="aboutModal" class="modal hidden">
       <div class="modal-card">
-        <button class="close-button" id="closeAbout">×</button>
+        <button class='btn' class="close-button" id="closeAbout">×</button>
         <h2>About Lexicon</h2>
-        <p>Lexicon is a game in which an arbitrary number of players pretend to be researchers compiling a dictionary. 
+        <p>Lexicon is a game in which an arbitrary number of players pretend to be researchers compiling a dictionary, and in
+          the process they will build a world! Players agree on a basic genre to start ("cyberpunk", "fantasy", &c,). 
           In each round every player will choose an existing, undefined word starting with the next letter in alphabetical 
           order or (if there are none) create a new word starting with that letter and write a definition for it. 
           This definition will include two new words that start with later letters (if there are any).</p>
           <p>A few ground rules:</p>
           <ul>
+            <li>Do not define a word that you have introduced.</li>
             <li>Every fact stated in a researcher's bio is canon.</li>
             <li>Every fact stated in a definition is canon.</li>
-            <li>Opinions in definitions can be frequent and contradictory.</li>
-            <li>Do not define a word that you have introduced.</li>
+            <li>Opinions, on the other hand, should be frequent and contradictory.</li>
           </ul>
       </div>
     </div>
     </main>
-
-    <div id="loadingModal" class="modal hidden">
-      <div class="loading-card">
-        <img src="assets/Wedges@1x-25.0s-200px-200px.gif" alt="Loading..." />
-      </div>
-    </div>
 
     <script src="/config.js"></script>
     <script type="module" src="/app.js"></script>

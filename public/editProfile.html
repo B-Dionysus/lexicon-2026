@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Edit Profile</title>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles/buttons.css" />
   </head>
   <body>
     <header class="top-bar">
       <div class="button-row">
-        <button id="homeButton" onclick="window.location.href='/index.html'">Home</button>
+        <button class='btn' id="homeButton" onclick="window.location.href='/index.html'">Home</button>
       </div>
     </header>
     <main>
@@ -22,7 +23,7 @@
         Leave Password blank to keep the current password.
         <label>Password<input name="password" type="password" /></label>
         <label>Repeat Password<input name="repeat_password" type="password" /></label>
-        <button type="submit">Save Changes</button>
+        <button class='btn' type="submit">Save Changes</button>
       </form>
       <div id="message" class="error"></div>
     </main>

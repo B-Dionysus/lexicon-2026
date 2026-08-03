@@ -1,6 +1,7 @@
 
 import { getCurrentUserNameFromToken } from './frontendUtils.js';
 import { buildHref } from './frontendUtils.js';
+import { initGlobalLoader } from './frontendUtils.js';
 // This file loads and displays a user profile page.
 console.log('[FRONTEND profile] profile.js loaded');
 
@@ -42,7 +43,7 @@ async function loadProfile() {
     console.error('[FRONTEND profile] loadProfile exception', err);
   }
 }
-
+initGlobalLoader();
 // Update the top-right button so it shows or hides the Edit Profile button depending on auth state.
 function updateButtons() {
   const profileButton = document.getElementById('editProfileButton');

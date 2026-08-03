@@ -2,7 +2,8 @@
 import { 
   getCurrentUserNameFromToken, 
   buildHref, 
-  addUrlsToDefinition 
+  addUrlsToDefinition,
+  initGlobalLoader
 } from './frontendUtils.js';
 
 console.log('[FRONTEND app] initializing app.js');
@@ -138,6 +139,7 @@ function updateProfileButton() {
 }
 
 // 7. Event setup
+initGlobalLoader();
 window.addEventListener('DOMContentLoaded', () => {
   console.log('[FRONTEND app] DOMContentLoaded', { gameId: state.gameId, tokenPresent: !!state.token });
   
@@ -151,4 +153,27 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('newWordButton').addEventListener('click', () => window.location.href = buildHref('/new-definition.html', state.gameId));
   
   loadWords();
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const themeSelector = document.getElementById('themeSelector');
+  
+  if (themeSelector) {
+    themeSelector.addEventListener('change', (event) => {
+      const selectedTheme = event.target.value;
+      
+      // Update the dataset on the body tag
+      document.body.setAttribute('data-theme', selectedTheme);
+      
+      // Optional: Store the preference locally so it survives refreshes
+      localStorage.setItem('lexicon_button_theme', selectedTheme);
+    });
+
+    // Optional Auto-Load Check on Startup:
+    const savedTheme = localStorage.getItem('lexicon_button_theme');
+    if (savedTheme) {
+      document.body.setAttribute('data-theme', savedTheme);
+      themeSelector.value = savedTheme;
+    }
+  }
 });

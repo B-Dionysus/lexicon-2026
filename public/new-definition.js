@@ -1,3 +1,4 @@
+import { initGlobalLoader } from './frontendUtils.js';
 // This file handles creating or editing a word definition.
 console.log('[FRONTEND new-definition] loaded');
 
@@ -17,8 +18,11 @@ function setMessage(text, isError = true) {
 
 // If the page is for an existing word, fill the form with its current value.
 async function loadExistingWord() {
+  const loadingModal = document.getElementById('loadingModal');
   if (!wordId) return;
   try {
+    // Show modal once at the very beginning
+    loadingModal.classList.remove('hidden');
     console.log('[FRONTEND new-definition] loadExistingWord', wordId);
     const response = await fetch(`${window.APP_CONFIG.apiBase}/words/${encodeURIComponent(wordId)}?game_id=${encodeURIComponent(gameId)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
     console.log('[FRONTEND new-definition] loadExistingWord status', response.status);
@@ -48,9 +52,13 @@ async function loadExistingWord() {
     });
   } catch (err) {
     console.error('[FRONTEND new-definition] loadExistingWord exception', err);
+  }  
+  finally {
+    // Always hide the loading modal at the end, whether it succeeded or failed
+    loadingModal.classList.add('hidden');
   }
 }
-
+initGlobalLoader();
 // Wait for the page to finish loading, then attach the form behavior.
 window.addEventListener('DOMContentLoaded', () => {
   const wordField = document.getElementById('word');

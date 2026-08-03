@@ -1,0 +1,177 @@
+/* ==========================================
+   BASE BUTTON STYLES (Shared across themes)
+   ========================================== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Reduced base padding for elegant default sizing */
+  padding: 10px 22px; 
+  font-family: inherit;
+  font-size: 0.95rem; /* Slightly smaller, more refined text */
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  user-select: none;
+  white-space: nowrap;
+  /* Shared smooth transition engine */
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Global Accessibility Focus State */
+.btn:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+
+/* ==========================================
+   NEW THEME 1: "Sleek Underline" (`sleek-line`)
+   The "Slide" concept reduced to a single, powerful line.
+   ========================================== */
+[data-theme="sleek-line"] .btn {
+  position: relative;
+  background: transparent;
+  color: #555;
+  border: 1px solid #d1d1d1; /* Thin, soft border */
+  border-radius: 4px;
+  overflow: hidden;
+  transition: color 0.3s ease, border-color 0.3s ease, background 0.3s ease;
+}
+
+/* Build the elegant accent line on the bottom */
+[data-theme="sleek-line"] .btn::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px; /* The accent line */
+  background-color: #4f46e5;
+  transform: translateX(-101%); /* Hides to the left */
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme="sleek-line"] .btn:hover {
+  color: #111; /* Text gets darker */
+  border-color: #4f46e5; /* Border changes to accent */
+  background-color: rgba(79, 70, 229, 0.03); /* Subtle background hue hint */
+}
+
+[data-theme="sleek-line"] .btn:hover::after {
+  transform: translateX(0); /* Line slides across */
+}
+
+[data-theme="sleek-line"] .btn:active {
+  transform: translateY(1px); /* Tactile press */
+}
+
+
+/* ==========================================
+   NEW THEME 2: "Luxe Shine" (`luxe-shine`)
+   A subtle, expensive-feeling light reflection "slide."
+   Best on light-colored card backgrounds.
+   ========================================== */
+/* ==========================================
+   THEME: Luxe Shine (Default Fallback)
+   Applies automatically if data-theme is missing,
+   OR if it is explicitly set to "luxe-shine".
+   ========================================== */
+body:not([data-theme]) .btn,
+[data-theme="luxe-shine"] .btn {
+  position: relative;
+  background: #d6e2e7; 
+  color: #333;
+  border: 1px solid #dcdad1;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* The shine beam */
+body:not([data-theme]) .btn::after,
+[data-theme="luxe-shine"] .btn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(
+    120deg, 
+    transparent, 
+    rgba(255, 255, 255, 0.7), 
+    transparent
+  );
+  transform: skewX(-20deg);
+  transition: left 0.5s ease-out;
+}
+
+/* Hover States */
+body:not([data-theme]) .btn:hover,
+[data-theme="luxe-shine"] .btn:hover {
+  border-color: #bbb;
+}
+
+body:not([data-theme]) .btn:hover::after,
+[data-theme="luxe-shine"] .btn:hover::after {
+  left: 120%; /* Triggers the sweep animation */
+}
+
+/* Active Press States */
+body:not([data-theme]) .btn:active,
+[data-theme="luxe-shine"] .btn:active {
+  background: #f9f8f4;
+  transform: translateY(1px);
+}
+/* ==========================================
+   NEW THEME 3: "Gradient Tint" (`gradient-tint`)
+   A transparent, sophisticated gradient overlay slides from the corner.
+   Contemporary and chic.
+   ========================================== */
+[data-theme="gradient-tint"] .btn {
+  position: relative;
+  background: #fafafa;
+  color: #666;
+  border: 1px solid #e1e1e1;
+  border-radius: 6px; /* Pillow shape hint */
+  overflow: hidden;
+  transition: color 0.3s ease;
+}
+
+/* A very subtle, sophisticated transparent gradient */
+[data-theme="gradient-tint"] .btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    135deg, 
+    rgba(79, 70, 229, 0.08), 
+    rgba(236, 72, 153, 0.08)
+  );
+  transform: translateY(-100%); /* Slides from the top-left corner */
+  transition: transform 0.4s cubic-bezier(0.2, 1, 0.2, 1);
+}
+
+[data-theme="gradient-tint"] .btn:hover {
+  color: #222;
+  border-color: #d1d1d1;
+}
+
+[data-theme="gradient-tint"] .btn:hover::before {
+  transform: translateY(0); /* Reveal the gradient hint */
+}
+
+[data-theme="gradient-tint"] .btn:active {
+  transform: scale(0.98); /* Minimal contemporary interaction */
+}
+
+
+/* ==========================================
+   LEGACY THEMES (Kept for compatibility)
+   ========================================== */
+/* ... existing [data-theme="tactile"], [data-theme="glow"], [data-theme="slide"] blocks ... */

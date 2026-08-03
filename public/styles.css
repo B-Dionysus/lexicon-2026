@@ -1,41 +1,295 @@
 :root {
   color-scheme: light;
-  font-family: Arial, sans-serif;
-  line-height: 1.5;
+  /* Swapped Arial for a sharp, structural sans stack for UI layout */
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.6;
+  
   --bg: #f7f3e8;
   --panel: #fffdf8;
   --accent: #294d6d;
   --accent-2: #7e3d2c;
-  --border: #d4c7ac;
+  
+  /* Hardened the primary borders to stark dark charcoal for structural attitude */
+  --border: #1a1a1a;
+  --border-muted: #d4c7ac;
 }
-body { margin: 0; background: var(--bg); color: #222; }
-main { max-width: 900px; margin: 0 auto; padding: 2rem 1rem 4rem; }
-.top-bar { position: sticky; top: 0; background: #fff; border-bottom: 1px solid var(--border); padding: 1rem; }
-.button-row { display: flex; gap: 0.75rem; justify-content: flex-start; max-width: 900px; margin: 0 auto; }
-button { border: 1px solid var(--border); border-radius: 999px; padding: 0.6rem 1rem; background: var(--accent); color: white; cursor: pointer; }
-button.secondary { background: var(--accent-2); }
-.word-list { display: flex; flex-direction: column; gap: 1rem; margin-top: 1.5rem; }
-.card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-.card h2 { margin: 0 0 0.5rem; font-size: 1.2rem; }
-.card a { color: var(--accent); }
-.subtitle { color: #5d5d5d; }
-.empty { font-style: italic; color: #6b6b6b; }
-.modal { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; padding: 1rem; }
-.hidden { display: none; }
-.modal-card { background: white; width: min(700px, 100%); padding: 1.5rem; border-radius: 12px; position: relative; }
-.loading-card { background: rgba(255, 255, 255, 0); width: min(700px, 100%); padding: 1.5rem; border-radius: 0px; position: relative; }
-.close-button { position: absolute; top: 0.75rem; right: 0.75rem; background: transparent; color: #444; border: none; padding: 0.25rem 0.5rem; }
-form { display: flex; flex-direction: column; gap: 0.75rem; }
-label { display: flex; flex-direction: column; gap: 0.25rem; font-weight: 600; }
-input, textarea { padding: 0.7rem; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
-textarea { min-height: 120px; }
-input.invalid, textarea.invalid { border-color: #b33; background: #fdeaea; }
-.error { color: #b33; font-weight: 600; }
-.small { font-size: 0.95rem; color: #666; }
-/* Automatically styles any input when JS sets readOnly to true */
+
+body { 
+  margin: 0; 
+  background: var(--bg); 
+  color: #1a1a1a; 
+  -webkit-font-smoothing: antialiased;
+}
+
+main { 
+  max-width: 900px; 
+  margin: 0 auto; 
+  padding: 3rem 1.5rem 6rem; 
+}
+
+/* ==========================================
+   HEADER & NAVIGATION
+   ========================================== */
+.top-bar { 
+  position: sticky; 
+  top: 0; 
+  background: var(--panel); 
+  /* Solid, structural framing line instead of a soft divider */
+  border-bottom: 2px solid var(--border); 
+  padding: 1.2rem 1.5rem; 
+  z-index: 10;
+}
+
+.button-row { 
+  display: flex; 
+  gap: 1rem; 
+  justify-content: flex-start; 
+  max-width: 900px; 
+  margin: 0 auto; 
+}
+
+/* ==========================================
+   TYPOGRAPHY
+   ========================================== */
+h1 {
+  font-size: 2.5rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle { 
+  font-size: 1.1rem;
+  color: #4a4a4a; 
+  margin-bottom: 2.5rem;
+  font-weight: 500;
+}
+
+/* ==========================================
+   DICTIONARY CARDS (The Core Shift)
+   ========================================== */
+.word-list { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 1.5rem; 
+  margin-top: 1.5rem; 
+}
+
+.card { 
+  background: var(--panel); 
+  /* Swapped 12px rounded corners for a sharp architectural 0px corner grid */
+  border: 2px solid var(--border); 
+  border-radius: 0px; 
+  padding: 1.5rem; 
+  
+  /* Swapped the soft blurry shadow for an aggressive tactile block shadow */
+  box-shadow: 4px 4px 0px var(--border); 
+  transition: transform 0.1s ease, box-shadow 0.1s ease; 
+}
+
+/* Subtle micro-interaction when cards are hovered */
+.card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px var(--border);
+}
+
+.card h2 { 
+  margin: 0 0 0.75rem; 
+  font-size: 1.35rem; 
+  font-weight: 800;
+  /* Leans heavily into a typewriter/archive concept for the defined words */
+  font-family: "Courier New", Courier, monospace;
+}
+
+.card a { 
+  color: var(--accent); 
+  font-weight: 700;
+  text-decoration-thickness: 2px;
+}
+
+.empty { 
+  font-style: italic; 
+  color: #6b6b6b; 
+  padding: 2rem;
+  text-align: center;
+  border: 2px dashed var(--border-muted);
+}
+
+/* ==========================================
+   FORMS & INPUTS
+   ========================================== */
+form { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 1.25rem; 
+}
+
+label { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 0.35rem; 
+  font-weight: 700; 
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+}
+
+input, textarea { 
+  padding: 0.8rem; 
+  border: 2px solid var(--border); 
+  border-radius: 0px; /* Sharp inputs */
+  background: var(--panel);
+  font-family: inherit; 
+  transition: all 0.15s ease;
+}
+
+input:focus, textarea:focus {
+  outline: none;
+  background: #ffffff;
+  /* Input pops out slightly when active */
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0px var(--border);
+}
+
+textarea { 
+  min-height: 140px; 
+  resize: vertical;
+}
+
+input.invalid, textarea.invalid { 
+  border-color: var(--accent-2); 
+  background: #fff5f4; 
+  box-shadow: 4px 4px 0px var(--accent-2);
+}
+
+.error { 
+  color: var(--accent-2); 
+  font-weight: 700; 
+  font-size: 0.9rem;
+}
+
+.small { 
+  font-size: 0.9rem; 
+  color: #555; 
+}
+
 input:read-only, 
 textarea:read-only {
-  background-color: #f5f5f5; /* Light grey */
-  color: #666;               /* Slightly dimmer text color */
-  cursor: not-allowed;       /* Changes cursor to show it's locked */
+  background-color: #f0ede4; 
+  color: #555;               
+  cursor: not-allowed;       
+  border-style: dashed;
 }
+
+/* ==========================================
+   MODALS
+   ========================================== */
+.modal { 
+  position: fixed; 
+  inset: 0; 
+  background: rgba(26, 26, 26, 0.4); 
+  backdrop-filter: blur(4px); /* Frost overlay makes text entries pop */
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  padding: 1.5rem; 
+  z-index: 100;
+}
+
+.hidden { 
+  display: none !important; 
+}
+
+.modal-card { 
+  background: var(--panel); 
+  width: min(700px, 100%); 
+  padding: 2.5rem 2rem; 
+  border: 3px solid var(--border); 
+  border-radius: 0px; 
+  box-shadow: 8px 8px 0px var(--border);
+  position: relative; 
+}
+
+.modal-card h2 {
+  margin-top: 0;
+  font-size: 1.75rem;
+  font-weight: 900;
+}
+
+.loading-card { 
+  background: transparent; 
+  width: auto; 
+  padding: 0; 
+  position: relative; 
+}
+
+.close-button { 
+  position: absolute; 
+  top: 1rem; 
+  right: 1rem; 
+  background: transparent; 
+  color: var(--border); 
+  border: 2px solid var(--border);
+  font-size: 1.2rem;
+  font-weight: 800;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.close-button:hover {
+  background: var(--border);
+  color: var(--panel);
+}
+
+/* Various loading widgets */
+
+.brutalist-card-flipper {
+  width: 60px;
+  height: 60px;
+  background: var(--panel);
+  border: 3px solid var(--border);
+  box-shadow: 4px 4px 0px var(--border);
+  /* The animation uses steps() to look like mechanical card switching */
+  animation: flipCard 1.2s steps(4) infinite;
+}
+
+@keyframes flipCard {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.archive-indexer {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: var(--border);
+  background: var(--panel);
+  padding: 1rem 2rem;
+  border: 2px solid var(--border);
+  box-shadow: 4px 4px 0px var(--border);
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Inject the cycling index bracket system */
+.archive-indexer::before {
+  content: "[ COMPILING ]";
+  animation: indexCycle 2s steps(4) infinite;
+}
+
+@keyframes indexCycle {
+  0%   { content: "[ INDEXING: A-G ]"; }
+  25%  { content: "[ INDEXING: H-N ]"; }
+  50%  { content: "[ INDEXING: O-T ]"; }
+  75%  { content: "[ INDEXING: U-Z ]"; }
+  100% { content: "[ COMPILING...  ]"; }
+}
+
+
