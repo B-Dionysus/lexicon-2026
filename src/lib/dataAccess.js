@@ -33,6 +33,23 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     return response.Responses?.[tables.profiles] || [];
   }
 
+  const wordProjectionAttributeNames = {
+    '#word_id': 'word_id',
+    '#word': 'word',
+    '#user_name': 'user_name',
+    '#definition': 'definition',
+    '#new_word_1': 'new_word_1',
+    '#new_word_2': 'new_word_2',
+    '#new_word_1_id': 'new_word_1_id',
+    '#new_word_2_id': 'new_word_2_id',
+    '#previous_word_id': 'previous_word_id',
+    '#created_at': 'created_at',
+    '#updated_at': 'updated_at',
+    '#game_id': 'game_id'
+  };
+
+  const wordProjectionExpression = '#word_id,#word,#user_name,#definition,#new_word_1,#new_word_2,#new_word_1_id,#new_word_2_id,#previous_word_id,#created_at,#updated_at,#game_id';
+
   async function listWordsByGame(gameId) {
     log('dataAccess.listWordsByGame', gameId);
     const params = {
@@ -40,7 +57,8 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
       IndexName: 'game_id-word-index',
       KeyConditionExpression: 'game_id = :gameId',
       ExpressionAttributeValues: { ':gameId': gameId },
-      ProjectionExpression: 'word_id,word,user_name,definition,new_word_1,new_word_2,new_word_1_id,new_word_2_id,previous_word_id,created_at,updated_at,game_id'
+      ProjectionExpression: wordProjectionExpression,
+      ExpressionAttributeNames: wordProjectionAttributeNames
     };
     const res = await dynamodb.query(params).promise();
     return (res.Items || []).sort((a, b) => {
@@ -49,6 +67,29 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
       }
       return a.word.localeCompare(b.word);
     });
+  }
+
+  async function getCacheSignal(gameId) {
+    if (!gameId) return null;
+    log('dataAccess.getCacheSignal', gameId);
+    const result = await dynamodb.get({
+      TableName: tables.cacheSignals,
+      Key: { game_id: gameId },
+      ConsistentRead: true,
+      ProjectionExpression: 'game_id,last_invalidated'
+    }).promise();
+    return result.Item ? result.Item.last_invalidated : null;
+  }
+
+  async function touchCacheSignal(gameId) {
+    if (!gameId) return null;
+    const now = new Date().toISOString();
+    log('dataAccess.touchCacheSignal', gameId, now);
+    await dynamodb.put({
+      TableName: tables.cacheSignals,
+      Item: { game_id: gameId, last_invalidated: now }
+    }).promise();
+    return now;
   }
 
   async function listWordsByUserNameAndGame(userName, gameId) {
@@ -62,7 +103,16 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
         ':userName': userName,
         ':gameId': gameId
       },
-      ProjectionExpression: 'word_id,word,user_name,definition,created_at,updated_at,game_id'
+      ProjectionExpression: '#word_id,#word,#user_name,#definition,#created_at,#updated_at,#game_id',
+      ExpressionAttributeNames: {
+        '#word_id': 'word_id',
+        '#word': 'word',
+        '#user_name': 'user_name',
+        '#definition': 'definition',
+        '#created_at': 'created_at',
+        '#updated_at': 'updated_at',
+        '#game_id': 'game_id'
+      }
     };
     const res = await dynamodb.query(params).promise();
     return (res.Items || []).sort((a, b) => {
@@ -78,7 +128,8 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     const result = await dynamodb.get({
       TableName: tables.words,
       Key: { word_id: wordId },
-      ProjectionExpression: 'word_id,word,user_name,definition,new_word_1,new_word_2,new_word_1_id,new_word_2_id,previous_word_id,created_at,updated_at,game_id'
+      ProjectionExpression: wordProjectionExpression,
+      ExpressionAttributeNames: wordProjectionAttributeNames
     }).promise();
     return result.Item || null;
   }
@@ -137,6 +188,8 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     getProfile,
     getProfilesByUserNames,
     listWordsByGame,
+    getCacheSignal,
+    touchCacheSignal,
     listWordsByUserNameAndGame,
     getWord,
     getGame,

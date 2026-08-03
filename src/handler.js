@@ -60,6 +60,7 @@ const dynamodb = createDynamoDbAdapter(DynamoDBDocumentClient.from(new DynamoDBC
 const TABLE_WORDS = process.env.WORDS_TABLE || 'lexicon-2026-words';
 const TABLE_GAMES = process.env.GAMES_TABLE || 'lexicon-2026-games';
 const TABLE_PROFILES = process.env.PROFILES_TABLE || 'lexicon-2026-profiles';
+const TABLE_CACHE_SIGNALS = process.env.CACHE_SIGNALS_TABLE || 'lexicon-2026-cache-signals';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 
 // Debug helper: unified logging prefix for Lambda
@@ -73,12 +74,24 @@ function debugLog(...args) {
 
 debugLog('handler.js loaded', { envRegion: process.env.AWS_REGION, TABLE_WORDS, TABLE_PROFILES });
 
+const wordListCache = new Map();
+
+function clearWordListCache() {
+  wordListCache.clear();
+}
+
+function invalidateWordListCache(gameId) {
+  if (!gameId) return;
+  wordListCache.delete(gameId);
+}
+
 const dataAccess = createDataAccess({
   dynamodb,
   tables: {
     words: TABLE_WORDS,
     games: TABLE_GAMES,
-    profiles: TABLE_PROFILES
+    profiles: TABLE_PROFILES,
+    cacheSignals: TABLE_CACHE_SIGNALS
   },
   logger: debugLog
 });
@@ -103,7 +116,20 @@ async function getProfile(userName) {
 }
 
 async function listWordsByGame(gameId) {
-  return dataAccess.listWordsByGame(gameId);
+  const signal = await dataAccess.getCacheSignal(gameId);
+  if (wordListCache.has(gameId)) {
+    const cached = wordListCache.get(gameId);
+    if (cached.signal === signal) {
+      debugLog('listWordsByGame: returning cached list', gameId, cached.words.length, 'signal', signal);
+      return cached.words;
+    }
+    debugLog('listWordsByGame: cached signal stale', gameId, { cached: cached.signal, current: signal });
+  }
+
+  const words = await dataAccess.listWordsByGame(gameId);
+  wordListCache.set(gameId, { words, signal, cachedAt: new Date().toISOString() });
+  debugLog('listWordsByGame: cached list', gameId, words.length, 'signal', signal);
+  return words;
 }
 
 async function getWord(wordId) {
@@ -266,6 +292,8 @@ async function handleCreateWord(event) {
     game_id: gameId
   };
   await createWord(item, relatedItems);
+  await dataAccess.touchCacheSignal(gameId);
+  invalidateWordListCache(gameId);
   return success({ word: item });
 }
 
@@ -283,6 +311,8 @@ async function handleUpdateWord(event) {
     updated_at: new Date().toISOString()
   };
   const updated = await updateWord(wordId, updates);
+  await dataAccess.touchCacheSignal(existing.game_id);
+  invalidateWordListCache(existing.game_id);
   return success({ word: updated });
 }
 
@@ -299,6 +329,19 @@ async function handleGetProfile(event) {
   const gameId = normalizeGameId(event.queryStringParameters && event.queryStringParameters.game_id);
   const authoredWords = await dataAccess.listWordsByUserNameAndGame(userName, gameId);
   return success({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at }, words: authoredWords });
+}
+
+async function handleInvalidateCache(event) {
+  const user = getCurrentUser(event);
+  if (!user) return error('Authentication required', 401);
+  const gameId = normalizeGameId(event.queryStringParameters && event.queryStringParameters.game_id);
+  if (event.queryStringParameters && event.queryStringParameters.game_id) {
+    await dataAccess.touchCacheSignal(gameId);
+    invalidateWordListCache(gameId);
+    return success({ invalidated: gameId });
+  }
+  clearWordListCache();
+  return success({ invalidated: 'all' });
 }
 
 async function handleGetGame(event) {
@@ -339,8 +382,10 @@ async function handleUpdateProfile(event) {
 
 async function route(event) {
   const method = event.httpMethod || event.requestContext && event.requestContext.httpMethod;
-  const path = event.rawPath || event.path || '';
-  debugLog('route: incoming', { method, path });
+  const rawPath = event.rawPath || event.path || '';
+  const stage = event.requestContext && (event.requestContext.stage || event.requestContext.http && event.requestContext.http.stage);
+  const path = stage && rawPath.startsWith(`/${stage}`) ? rawPath.slice(stage.length + 1) : rawPath;
+  debugLog('route: incoming', { method, rawPath, path, stage });
   if (method === 'OPTIONS') {
     return success({});
   }
@@ -364,6 +409,9 @@ async function route(event) {
   }
   if (method === 'POST' && path === '/login') {
     return handleLogin(event);
+  }
+  if (method === 'POST' && path === '/cache/invalidate') {
+    return handleInvalidateCache(event);
   }
   if (method === 'GET' && path.startsWith('/profiles/')) {
     return handleGetProfile(event);
@@ -393,7 +441,11 @@ exports.handleUpdateWord = handleUpdateWord;
 exports.handleGetProfile = handleGetProfile;
 exports.handleGetGame = handleGetGame;
 exports.handleUpdateProfile = handleUpdateProfile;
+exports.handleInvalidateCache = handleInvalidateCache;
 exports.__test__ = {
   dataAccess,
-  dynamodb
+  dynamodb,
+  clearWordListCache,
+  invalidateWordListCache,
+  wordListCache
 };

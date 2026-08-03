@@ -7,12 +7,13 @@ const { createDataAccess } = require('../src/lib/dataAccess');
 const handlerModule = require('../src/handler');
 const { handler } = handlerModule;
 
-function createMockDynamo({ getResult = { Item: null }, queryResult = { Items: [] }, batchGetResult = { Responses: {} }, updateResult = { Attributes: {} }, transactWriteResult = {} } = {}) {
+function createMockDynamo({ getResult = { Item: null }, queryResult = { Items: [] }, batchGetResult = { Responses: {} }, updateResult = { Attributes: {} }, transactWriteResult = {}, putResult = {} } = {}) {
   const calls = [];
   return {
     calls,
     dynamodb: {
       get: (params) => ({ promise: async () => { calls.push({ op: 'get', params }); return getResult; } }),
+      put: (params) => ({ promise: async () => { calls.push({ op: 'put', params }); return putResult; } }),
       query: (params) => ({ promise: async () => { calls.push({ op: 'query', params }); return queryResult; } }),
       batchGet: (params) => ({ promise: async () => { calls.push({ op: 'batchGet', params }); return batchGetResult; } }),
       update: (params) => ({ promise: async () => { calls.push({ op: 'update', params }); return updateResult; } }),
@@ -68,6 +69,36 @@ test('handler returns 404 for unsupported routes', async () => {
   assert.equal(JSON.parse(response.body).error, 'Path /nope not found');
 });
 
+test('handler routes stage-prefixed API paths correctly', async () => {
+  const originalListWords = handlerModule.__test__.dataAccess.listWordsByGame;
+  const originalGetProfiles = handlerModule.__test__.dataAccess.getProfilesByUserNames;
+  const originalGetCacheSignal = handlerModule.__test__.dataAccess.getCacheSignal;
+
+  handlerModule.__test__.dataAccess.listWordsByGame = async () => [
+    { word_id: 'word-1', word: 'alpha', user_name: 'researcher', game_id: 'default' }
+  ];
+  handlerModule.__test__.dataAccess.getProfilesByUserNames = async () => [
+    { user_name: 'researcher', researcher_name: 'Ada' }
+  ];
+  handlerModule.__test__.dataAccess.getCacheSignal = async () => null;
+
+  const response = await handler({
+    httpMethod: 'GET',
+    rawPath: '/Prod/words',
+    requestContext: { stage: 'Prod' },
+    queryStringParameters: { game_id: 'default' }
+  });
+
+  handlerModule.__test__.dataAccess.listWordsByGame = originalListWords;
+  handlerModule.__test__.dataAccess.getProfilesByUserNames = originalGetProfiles;
+  handlerModule.__test__.dataAccess.getCacheSignal = originalGetCacheSignal;
+
+  assert.equal(response.statusCode, 200);
+  const payload = JSON.parse(response.body);
+  assert.equal(payload.words.length, 1);
+  assert.equal(payload.words[0].word, 'alpha');
+});
+
 test('createDataAccess batches profile reads for word lists', async () => {
   const { dynamodb, calls } = createMockDynamo({
     batchGetResult: { Responses: { 'lexicon-2026-profiles': [{ user_name: 'researcher', researcher_name: 'Ada' }] } }
@@ -110,7 +141,7 @@ test('createDataAccess createWordWithRelated writes transactionally', async () =
   const { dynamodb, calls } = createMockDynamo({ transactWriteResult: {} });
   const dataAccess = createDataAccess({
     dynamodb,
-    tables: { words: 'lexicon-2026-words', games: 'lexicon-2026-games', profiles: 'lexicon-2026-profiles' },
+    tables: { words: 'lexicon-2026-words', games: 'lexicon-2026-games', profiles: 'lexicon-2026-profiles', cacheSignals: 'lexicon-2026-cache-signals' },
     logger: () => {}
   });
 
@@ -121,6 +152,36 @@ test('createDataAccess createWordWithRelated writes transactionally', async () =
   assert.equal(calls.length, 1);
   assert.equal(calls[0].op, 'transactWrite');
   assert.equal(calls[0].params.TransactItems.length, 2);
+});
+
+test('createDataAccess getCacheSignal returns the shared invalidation token', async () => {
+  const { dynamodb, calls } = createMockDynamo({ getResult: { Item: { game_id: 'default', last_invalidated: '2026-01-01T00:00:00.000Z' } } });
+  const dataAccess = createDataAccess({
+    dynamodb,
+    tables: { words: 'lexicon-2026-words', games: 'lexicon-2026-games', profiles: 'lexicon-2026-profiles', cacheSignals: 'lexicon-2026-cache-signals' },
+    logger: () => {}
+  });
+
+  const signal = await dataAccess.getCacheSignal('default');
+  assert.equal(signal, '2026-01-01T00:00:00.000Z');
+  assert.equal(calls[0].op, 'get');
+  assert.equal(calls[0].params.TableName, 'lexicon-2026-cache-signals');
+});
+
+test('createDataAccess touchCacheSignal writes the invalidation token', async () => {
+  const { dynamodb, calls } = createMockDynamo({ putResult: {} });
+  const dataAccess = createDataAccess({
+    dynamodb,
+    tables: { words: 'lexicon-2026-words', games: 'lexicon-2026-games', profiles: 'lexicon-2026-profiles', cacheSignals: 'lexicon-2026-cache-signals' },
+    logger: () => {}
+  });
+
+  const result = await dataAccess.touchCacheSignal('default');
+  assert.ok(typeof result === 'string');
+  assert.ok(result.endsWith('Z'));
+  assert.equal(calls[0].op, 'put');
+  assert.equal(calls[0].params.TableName, 'lexicon-2026-cache-signals');
+  assert.equal(calls[0].params.Item.game_id, 'default');
 });
 
 test('createDataAccess updateProfile constructs the expected update request', async () => {
@@ -190,9 +251,43 @@ test('handleGetProfile returns authored words using the profile index', async ()
   assert.equal(payload.words[0].word_id, 'word-1');
 });
 
+test('handleInvalidateCache clears a single game cache entry when authenticated', async () => {
+  const originalTouchCacheSignal = handlerModule.__test__.dataAccess.touchCacheSignal;
+  const token = 'Bearer ' + jwt.sign({ user_name: 'researcher' }, process.env.JWT_SECRET || 'dev-secret');
+  handlerModule.__test__.dataAccess.touchCacheSignal = async () => '2026-01-01T00:00:00.000Z';
+  handlerModule.__test__.wordListCache.set('default', { words: [], cachedAt: new Date().toISOString() });
+
+  const response = await handlerModule.handleInvalidateCache({
+    headers: { Authorization: token },
+    queryStringParameters: { game_id: 'default' }
+  });
+
+  handlerModule.__test__.dataAccess.touchCacheSignal = originalTouchCacheSignal;
+  assert.equal(response.statusCode, 200);
+  const payload = JSON.parse(response.body);
+  assert.equal(payload.invalidated, 'default');
+  assert.equal(handlerModule.__test__.wordListCache.has('default'), false);
+});
+
+test('handleInvalidateCache clears all cache entries when no game_id is provided', async () => {
+  const token = 'Bearer ' + jwt.sign({ user_name: 'researcher' }, process.env.JWT_SECRET || 'dev-secret');
+  handlerModule.__test__.wordListCache.set('default', { words: [], cachedAt: new Date().toISOString() });
+  handlerModule.__test__.wordListCache.set('another', { words: [], cachedAt: new Date().toISOString() });
+
+  const response = await handlerModule.handleInvalidateCache({
+    headers: { Authorization: token }
+  });
+
+  assert.equal(response.statusCode, 200);
+  const payload = JSON.parse(response.body);
+  assert.equal(payload.invalidated, 'all');
+  assert.equal(handlerModule.__test__.wordListCache.size, 0);
+});
+
 test('handleCreateWord writes the main word and related words transactionally', async () => {
   const originalDataAccess = handlerModule.__test__.dataAccess;
   const originalCreateWordWithRelated = originalDataAccess.createWordWithRelated;
+  const originalTouchCacheSignal = originalDataAccess.touchCacheSignal;
 
   let createCalled = false;
   let capturedArgs;
@@ -202,6 +297,10 @@ test('handleCreateWord writes the main word and related words transactionally', 
     capturedArgs = { item, relatedItems };
     return item;
   };
+  originalDataAccess.touchCacheSignal = async () => '2026-01-01T00:00:00.000Z';
+
+  handlerModule.__test__.clearWordListCache();
+  handlerModule.__test__.wordListCache.set('default', { words: [], cachedAt: new Date().toISOString() });
 
   const token = 'Bearer ' + require('jsonwebtoken').sign({ user_name: 'researcher' }, process.env.JWT_SECRET || 'dev-secret');
   const response = await handlerModule.handleCreateWord({
@@ -216,14 +315,89 @@ test('handleCreateWord writes the main word and related words transactionally', 
   });
 
   handlerModule.__test__.dataAccess.createWordWithRelated = originalCreateWordWithRelated;
+  handlerModule.__test__.dataAccess.touchCacheSignal = originalTouchCacheSignal;
 
   assert.equal(createCalled, true);
+  assert.equal(handlerModule.__test__.wordListCache.has('default'), false);
   assert.equal(response.statusCode, 200);
   const payload = JSON.parse(response.body);
   assert.equal(payload.word.word, 'test');
   assert.equal(payload.word.game_id, 'default');
   assert.equal(capturedArgs.relatedItems.length, 2);
   assert.equal(capturedArgs.item.user_name, 'researcher');
+});
+
+test('handleGetWords returns a cached word list on second call', async () => {
+  const originalListWords = handlerModule.__test__.dataAccess.listWordsByGame;
+  const originalGetCacheSignal = handlerModule.__test__.dataAccess.getCacheSignal;
+
+  let listCalls = 0;
+  handlerModule.__test__.dataAccess.listWordsByGame = async () => {
+    listCalls += 1;
+    return [{ word_id: 'word-1', word: 'alpha', user_name: 'researcher', game_id: 'default' }];
+  };
+  handlerModule.__test__.dataAccess.getCacheSignal = async () => 'token-1';
+
+  handlerModule.__test__.clearWordListCache();
+
+  await handlerModule.handleGetWords({ queryStringParameters: { game_id: 'default' } });
+  await handlerModule.handleGetWords({ queryStringParameters: { game_id: 'default' } });
+
+  handlerModule.__test__.dataAccess.listWordsByGame = originalListWords;
+  handlerModule.__test__.dataAccess.getCacheSignal = originalGetCacheSignal;
+
+  assert.equal(listCalls, 1);
+});
+
+test('handleGetWords refreshes cached word list when shared signal changes', async () => {
+  const originalListWords = handlerModule.__test__.dataAccess.listWordsByGame;
+  const originalGetCacheSignal = handlerModule.__test__.dataAccess.getCacheSignal;
+
+  let listCalls = 0;
+  const signalValues = ['old-token', 'new-token'];
+
+  handlerModule.__test__.dataAccess.listWordsByGame = async () => {
+    listCalls += 1;
+    return [{ word_id: 'word-1', word: 'alpha', user_name: 'researcher', game_id: 'default' }];
+  };
+  handlerModule.__test__.dataAccess.getCacheSignal = async () => signalValues.shift();
+
+  handlerModule.__test__.clearWordListCache();
+
+  await handlerModule.handleGetWords({ queryStringParameters: { game_id: 'default' } });
+  await handlerModule.handleGetWords({ queryStringParameters: { game_id: 'default' } });
+
+  handlerModule.__test__.dataAccess.listWordsByGame = originalListWords;
+  handlerModule.__test__.dataAccess.getCacheSignal = originalGetCacheSignal;
+
+  assert.equal(listCalls, 2);
+});
+
+test('handleUpdateWord invalidates the cached word list when a word changes', async () => {
+  const originalGetWord = handlerModule.__test__.dataAccess.getWord;
+  const originalUpdateWord = handlerModule.__test__.dataAccess.updateWord;
+  const originalTouchCacheSignal = handlerModule.__test__.dataAccess.touchCacheSignal;
+
+  handlerModule.__test__.dataAccess.getWord = async () => ({ word_id: 'word-1', user_name: 'researcher', game_id: 'default' });
+  handlerModule.__test__.dataAccess.updateWord = async (wordId, updates) => ({ word_id: wordId, ...updates });
+  handlerModule.__test__.dataAccess.touchCacheSignal = async () => '2026-01-01T00:00:00.000Z';
+
+  handlerModule.__test__.clearWordListCache();
+  handlerModule.__test__.wordListCache.set('default', { words: [], cachedAt: new Date().toISOString() });
+
+  const token = 'Bearer ' + jwt.sign({ user_name: 'researcher' }, process.env.JWT_SECRET || 'dev-secret');
+  const response = await handlerModule.handleUpdateWord({
+    headers: { Authorization: token },
+    pathParameters: { word_id: 'word-1' },
+    body: JSON.stringify({ definition: 'Updated definition' })
+  });
+
+  handlerModule.__test__.dataAccess.getWord = originalGetWord;
+  handlerModule.__test__.dataAccess.updateWord = originalUpdateWord;
+  handlerModule.__test__.dataAccess.touchCacheSignal = originalTouchCacheSignal;
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(handlerModule.__test__.wordListCache.has('default'), false);
 });
 
 test('handleSignup creates a new profile and returns a token', async () => {
@@ -279,6 +453,7 @@ test('handleLogin validates credentials and returns a token', async () => {
 test('handleGetWords returns words decorated with researcher names', async () => {
   const originalListWords = handlerModule.__test__.dataAccess.listWordsByGame;
   const originalGetProfiles = handlerModule.__test__.dataAccess.getProfilesByUserNames;
+  const originalGetCacheSignal = handlerModule.__test__.dataAccess.getCacheSignal;
 
   handlerModule.__test__.dataAccess.listWordsByGame = async () => [
     { word_id: 'word-1', word: 'alpha', user_name: 'researcher', game_id: 'default' }
@@ -286,11 +461,13 @@ test('handleGetWords returns words decorated with researcher names', async () =>
   handlerModule.__test__.dataAccess.getProfilesByUserNames = async () => [
     { user_name: 'researcher', researcher_name: 'Ada' }
   ];
+  handlerModule.__test__.dataAccess.getCacheSignal = async () => null;
 
   const response = await handlerModule.handleGetWords({ queryStringParameters: { game_id: 'default' } });
 
   handlerModule.__test__.dataAccess.listWordsByGame = originalListWords;
   handlerModule.__test__.dataAccess.getProfilesByUserNames = originalGetProfiles;
+  handlerModule.__test__.dataAccess.getCacheSignal = originalGetCacheSignal;
 
   assert.equal(response.statusCode, 200);
   const payload = JSON.parse(response.body);

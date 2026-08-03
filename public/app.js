@@ -125,6 +125,21 @@ async function loadSubtitle() {
   }
 }
 
+async function invalidateCache(gameId = state.gameId) {
+  const url = `${window.APP_CONFIG.apiBase}/cache/invalidate?game_id=${encodeURIComponent(gameId)}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: state.token ? { Authorization: `Bearer ${state.token}` } : {}
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Unable to invalidate cache: ${response.status} ${text}`);
+  }
+  return response.json();
+}
+
+window.invalidateWordListCache = invalidateCache;
+
 function updateProfileButton() {
   const button = document.getElementById('profileButton');
   const currentUserName = getCurrentUserNameFromToken(state.token);

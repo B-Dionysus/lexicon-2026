@@ -14,6 +14,7 @@ Globals:
       Variables:
         WORDS_TABLE: lexicon-2026-words
         PROFILES_TABLE: lexicon-2026-profiles
+        CACHE_SIGNALS_TABLE: lexicon-2026-cache-signals
         JWT_SECRET:
           Ref: JwtSecret
 Resources:
@@ -30,7 +31,7 @@ Resources:
   LexiconFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://lexicon-2026-deployments/20938ed2d358f6c62df526414b837365
+      CodeUri: s3://lexicon-2026-deployments/bfeb3ad888fdf225b2f0f3e0b38cfbbe
       Handler: handler.handler
       Policies:
       - DynamoDBCrudPolicy:
@@ -39,6 +40,11 @@ Resources:
       - DynamoDBCrudPolicy:
           TableName:
             Ref: ProfilesTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: CacheSignalsTable
+      - DynamoDBCrudPolicy:
+          TableName: lexicon-2026-games
       Events:
         Api:
           Type: Api
@@ -61,6 +67,8 @@ Resources:
         AttributeType: S
       - AttributeName: word
         AttributeType: S
+      - AttributeName: user_name
+        AttributeType: S
       KeySchema:
       - AttributeName: word_id
         KeyType: HASH
@@ -70,6 +78,14 @@ Resources:
         - AttributeName: game_id
           KeyType: HASH
         - AttributeName: word
+          KeyType: RANGE
+        Projection:
+          ProjectionType: ALL
+      - IndexName: user_name-game_id-index
+        KeySchema:
+        - AttributeName: user_name
+          KeyType: HASH
+        - AttributeName: game_id
           KeyType: RANGE
         Projection:
           ProjectionType: ALL
@@ -88,6 +104,19 @@ Resources:
         KeyType: HASH
     Metadata:
       SamResourceId: ProfilesTable
+  CacheSignalsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: lexicon-2026-cache-signals
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: game_id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: game_id
+        KeyType: HASH
+    Metadata:
+      SamResourceId: CacheSignalsTable
 Outputs:
   ApiEndpoint:
     Description: API Gateway endpoint for Lexicon 2026

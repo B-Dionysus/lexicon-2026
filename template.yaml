@@ -16,6 +16,7 @@ Globals:
       Variables:
         WORDS_TABLE: lexicon-2026-words
         PROFILES_TABLE: lexicon-2026-profiles
+        CACHE_SIGNALS_TABLE: lexicon-2026-cache-signals
         JWT_SECRET: !Ref JwtSecret
 
 Resources:
@@ -38,6 +39,10 @@ Resources:
             TableName: !Ref WordsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ProfilesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CacheSignalsTable
+        - DynamoDBCrudPolicy:
+            TableName: lexicon-2026-games
       Events:
         Api:
           Type: Api
@@ -91,6 +96,18 @@ Resources:
           AttributeType: S
       KeySchema:
         - AttributeName: user_name
+          KeyType: HASH
+
+  CacheSignalsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: lexicon-2026-cache-signals
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: game_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: game_id
           KeyType: HASH
 
 Outputs:
