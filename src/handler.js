@@ -1,18 +1,62 @@
-const AWS = require('aws-sdk');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const {
+  DynamoDBDocumentClient,
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+  BatchGetCommand,
+  UpdateCommand,
+  TransactWriteCommand
+} = require('@aws-sdk/lib-dynamodb');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const {
   normalizeGameId,
   parseAuthTokenFromHeader,
-  capitalize,
   decorateWordsWithResearcherNames,
   extractBody,
   success,
   error
 } = require('./lib/utils');
+const { createDataAccess } = require('./lib/dataAccess');
 
-const dynamodb = new AWS.DynamoDB.DocumentClient({ region: process.env.AWS_REGION || 'us-east-1' });
+function createDynamoDbAdapter(documentClient) {
+  return {
+    get(params) {
+      return {
+        promise: async () => documentClient.send(new GetCommand(params))
+      };
+    },
+    put(params) {
+      return {
+        promise: async () => documentClient.send(new PutCommand(params))
+      };
+    },
+    batchGet(params) {
+      return {
+        promise: async () => documentClient.send(new BatchGetCommand(params))
+      };
+    },
+    query(params) {
+      return {
+        promise: async () => documentClient.send(new QueryCommand(params))
+      };
+    },
+    update(params) {
+      return {
+        promise: async () => documentClient.send(new UpdateCommand(params))
+      };
+    },
+    transactWrite(params) {
+      return {
+        promise: async () => documentClient.send(new TransactWriteCommand(params))
+      };
+    }
+  };
+}
+
+const dynamodb = createDynamoDbAdapter(DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' })));
 const TABLE_WORDS = process.env.WORDS_TABLE || 'lexicon-2026-words';
 const TABLE_GAMES = process.env.GAMES_TABLE || 'lexicon-2026-games';
 const TABLE_PROFILES = process.env.PROFILES_TABLE || 'lexicon-2026-profiles';
@@ -28,6 +72,16 @@ function debugLog(...args) {
 }
 
 debugLog('handler.js loaded', { envRegion: process.env.AWS_REGION, TABLE_WORDS, TABLE_PROFILES });
+
+const dataAccess = createDataAccess({
+  dynamodb,
+  tables: {
+    words: TABLE_WORDS,
+    games: TABLE_GAMES,
+    profiles: TABLE_PROFILES
+  },
+  logger: debugLog
+});
 
 function getCurrentUser(event) {
   // Parse and verify JWT from incoming request headers
@@ -45,72 +99,27 @@ function getCurrentUser(event) {
 }
 
 async function getProfile(userName) {
-  // Retrieve a profile from DynamoDB
-  if (!userName) return null;
-
-  debugLog('getProfile: fetching', userName);
-  const result = await dynamodb.get({ TableName: TABLE_PROFILES, Key: { user_name: userName } }).promise();
-  debugLog('getProfile: result', !!result && !!result.Item);
-  return result.Item || null;
+  return dataAccess.getProfile(userName);
 }
 
 async function listWordsByGame(gameId) {
-  // Query words for a given game id
-  debugLog('listWordsByGame: gameId', gameId);
-  const params = {
-    TableName: TABLE_WORDS,
-    IndexName: 'game_id-word-index',
-    KeyConditionExpression: 'game_id = :gameId',
-    ExpressionAttributeValues: { ':gameId': gameId }
-  };
-  const res = await dynamodb.query(params).promise();
-  debugLog('listWordsByGame: itemsCount', (res.Items || []).length);
-  return (res.Items || []).sort((a, b) => {
-    if (a.word === b.word) {
-      return (a.created_at || '').localeCompare(b.created_at || '');
-    }
-    return a.word.localeCompare(b.word);
-  });
+  return dataAccess.listWordsByGame(gameId);
 }
 
 async function getWord(wordId) {
-  // Fetch a single word record by id
-  debugLog('getWord: fetching', wordId);
-  const result = await dynamodb.get({ TableName: TABLE_WORDS, Key: { word_id: wordId } }).promise();
-  debugLog('getWord: found', !!result && !!result.Item);
-  return result.Item || null;
-}
-async function getGame(gameId){
-  debugLog('getGame: gameID=', gameId);
-  const result = await dynamodb.get({ TableName: TABLE_GAMES, Key: { game_id: gameId } }).promise();
-  debugLog('getGame: found', result.Item);
-  return result.Item || null;
+  return dataAccess.getWord(wordId);
 }
 
-async function createWord(params) {
-  // Persist a new word into DynamoDB
-  debugLog('createWord: putting', params && params.Item && params.Item.word_id);
-  await dynamodb.put(params).promise();
-  debugLog('createWord: put complete');
-  return params.Item;
+async function getGame(gameId) {
+  return dataAccess.getGame(gameId);
+}
+
+async function createWord(item, relatedItems = []) {
+  return dataAccess.createWordWithRelated(item, relatedItems);
 }
 
 async function updateWord(wordId, updates) {
-  const updateExpression = Object.keys(updates).map((key) => `#${key} = :${key}`).join(', ');
-  const expressionAttributeNames = Object.keys(updates).reduce((acc, key) => ({ ...acc, [`#${key}`]: key }), {});
-  const expressionAttributeValues = Object.keys(updates).reduce((acc, key) => ({ ...acc, [`:${key}`]: updates[key] }), {});
-  const params = {
-    TableName: TABLE_WORDS,
-    Key: { word_id: wordId },
-    UpdateExpression: `SET ${updateExpression}`,
-    ExpressionAttributeNames: expressionAttributeNames,
-    ExpressionAttributeValues: expressionAttributeValues,
-    ReturnValues: 'ALL_NEW'
-  };
-  debugLog('updateWord: updating', wordId, updates);
-  const res = await dynamodb.update(params).promise();
-  debugLog('updateWord: updated', res && res.Attributes && res.Attributes.word_id);
-  return res.Attributes;
+  return dataAccess.updateWord(wordId, updates);
 }
 
 async function handleSignup(event) {
@@ -153,7 +162,7 @@ async function handleLogin(event) {
 async function handleGetWords(event) {
   const gameId = normalizeGameId(event.queryStringParameters && event.queryStringParameters.game_id);
   const words = await listWordsByGame(gameId);
-  const profiles = await Promise.all((words || []).map((word) => getProfile(word.user_name)));
+  const profiles = await dataAccess.getProfilesByUserNames((words || []).map((word) => word.user_name));
   const profilesByUserName = Object.fromEntries(profiles.filter(Boolean).map((profile) => [profile.user_name, profile]));
   return success({ words: decorateWordsWithResearcherNames(words, profilesByUserName) });
 }
@@ -196,16 +205,52 @@ async function handleCreateWord(event) {
   const user = getCurrentUser(event);
   if (!user) return error('Authentication required', 401);
   const body = extractBody(event);
-  debugLog("body=", body)
+  debugLog('body=', body);
   const wordText = (body.word || '').trim().toLowerCase();
   if (!wordText) return error('Word is required', 400);
   const gameId = normalizeGameId(body.game_id || (event.queryStringParameters && event.queryStringParameters.game_id));
   const wordId = body.word_id || uuidv4();
   const now = new Date().toISOString();
-  const new_1 =  (body.new_word_1 || '').trim().toLowerCase();
-  const new_2 =  (body.new_word_2 || '').trim().toLowerCase();
-  const new_1_uuid = uuidv4()
-  const new_2_uuid = uuidv4() 
+  const new_1 = (body.new_word_1 || '').trim().toLowerCase();
+  const new_2 = (body.new_word_2 || '').trim().toLowerCase();
+  const new_1_uuid = uuidv4();
+  const new_2_uuid = uuidv4();
+  const relatedItems = [];
+
+  if (typeof new_1 === 'string' && new_1.length > 0) {
+    relatedItems.push({
+      word_id: new_1_uuid,
+      word: new_1,
+      user_name: user.user_name,
+      definition: '',
+      new_word_1: '',
+      new_word_2: '',
+      new_word_1_id: uuidv4(),
+      new_word_2_id: uuidv4(),
+      previous_word_id: wordId,
+      created_at: now,
+      updated_at: now,
+      game_id: gameId
+    });
+  }
+
+  if (typeof new_2 === 'string' && new_2.length > 0) {
+    relatedItems.push({
+      word_id: new_2_uuid,
+      word: new_2,
+      user_name: user.user_name,
+      definition: '',
+      new_word_1: '',
+      new_word_2: '',
+      new_word_1_id: uuidv4(),
+      new_word_2_id: uuidv4(),
+      previous_word_id: wordId,
+      created_at: now,
+      updated_at: now,
+      game_id: gameId
+    });
+  }
+
   const item = {
     word_id: wordId,
     word: wordText,
@@ -220,32 +265,7 @@ async function handleCreateWord(event) {
     updated_at: now,
     game_id: gameId
   };
-  await createWord({ TableName: TABLE_WORDS, Item: item });
-
- if (typeof new_1 === 'string' && new_1.length > 0) {
-  const newItem1 = {
-    word_id: new_1_uuid,
-    word: new_1,
-    previous_word_id: wordId,
-    created_at: now,
-    updated_at: now,
-    game_id: gameId
-  };
-  await createWord({ TableName: TABLE_WORDS, Item: newItem1 });
- }
- 
- if (typeof new_2 === 'string' && new_2.length > 0) {
-  const newItem2 = {
-    word_id: new_2_uuid,
-    word: new_2,
-    previous_word_id: wordId,
-    created_at: now,
-    updated_at: now,
-    game_id: gameId
-  };
-  await createWord({ TableName: TABLE_WORDS, Item: newItem2 });
- }
-
+  await createWord(item, relatedItems);
   return success({ word: item });
 }
 
@@ -276,20 +296,20 @@ async function handleGetProfile(event) {
   if (!userName) return error('user_name is required', 400);
   const profile = await getProfile(userName);
   if (!profile) return error('Profile not found', 404);
-  const words = await listWordsByGame(normalizeGameId(event.queryStringParameters && event.queryStringParameters.game_id));
-  const authoredWords = words.filter((word) => word.user_name === userName);
+  const gameId = normalizeGameId(event.queryStringParameters && event.queryStringParameters.game_id);
+  const authoredWords = await dataAccess.listWordsByUserNameAndGame(userName, gameId);
   return success({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at }, words: authoredWords });
 }
 
 async function handleGetGame(event) {
-  debugLog("in handleGetGame, event=", event.queryStringParameters?.game_id)
+  debugLog('in handleGetGame, event=', event.queryStringParameters?.game_id);
   const gameId = normalizeGameId(event.queryStringParameters?.game_id);
   if (!gameId) return error('game_id is required', 400);
-  debugLog("calling getgame with gameId=", gameId);
+  debugLog('calling getgame with gameId=', gameId);
   const data = await getGame(gameId);
-  debugLog("data= ", data);
-  subtitle = data.subtitle;
-  return success({ game: { game_id: gameId, subtitle: subtitle } });
+  debugLog('data=', data);
+  const subtitle = data && data.subtitle ? data.subtitle : '';
+  return success({ game: { game_id: gameId, subtitle } });
 }
 
 async function handleUpdateProfile(event) {
@@ -313,17 +333,7 @@ async function handleUpdateProfile(event) {
     if (body.password !== body.repeat_password) return error('Passwords must match', 400);
     updates.password_hash = bcrypt.hashSync(body.password, 12);
   }
-  const expressionAttributeNames = Object.keys(updates).reduce((acc, key) => ({ ...acc, [`#${key}`]: key }), {});
-  const expressionAttributeValues = Object.keys(updates).reduce((acc, key) => ({ ...acc, [`:${key}`]: updates[key] }), {});
-  const updateExpression = Object.keys(updates).map((key) => `#${key} = :${key}`).join(', ');
-  await dynamodb.update({
-    TableName: TABLE_PROFILES,
-    Key: { user_name: userName },
-    UpdateExpression: `SET ${updateExpression}`,
-    ExpressionAttributeNames: expressionAttributeNames,
-    ExpressionAttributeValues: expressionAttributeValues,
-    ReturnValues: 'ALL_NEW'
-  }).promise();
+  await dataAccess.updateProfile(userName, updates);
   return success({ profile: { user_name: userName, researcher_name: updates.researcher_name, researcher_bio: updates.researcher_bio, updated_at: updates.updated_at } });
 }
 
@@ -372,4 +382,18 @@ exports.handler = async (event) => {
     console.error('[LAMBDA ERROR]', err);
     return error(err.message || 'Internal server error', 500);
   }
+};
+
+exports.handleSignup = handleSignup;
+exports.handleLogin = handleLogin;
+exports.handleGetWords = handleGetWords;
+exports.handleGetWord = handleGetWord;
+exports.handleCreateWord = handleCreateWord;
+exports.handleUpdateWord = handleUpdateWord;
+exports.handleGetProfile = handleGetProfile;
+exports.handleGetGame = handleGetGame;
+exports.handleUpdateProfile = handleUpdateProfile;
+exports.__test__ = {
+  dataAccess,
+  dynamodb
 };

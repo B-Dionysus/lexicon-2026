@@ -58,6 +58,8 @@ Resources:
           AttributeType: S
         - AttributeName: word
           AttributeType: S
+        - AttributeName: user_name
+          AttributeType: S
       KeySchema:
         - AttributeName: word_id
           KeyType: HASH
@@ -67,6 +69,14 @@ Resources:
             - AttributeName: game_id
               KeyType: HASH
             - AttributeName: word
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: user_name-game_id-index
+          KeySchema:
+            - AttributeName: user_name
+              KeyType: HASH
+            - AttributeName: game_id
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
