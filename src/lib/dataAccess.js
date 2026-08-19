@@ -57,8 +57,9 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
       IndexName: 'game_id-word-index',
       KeyConditionExpression: 'game_id = :gameId',
       ExpressionAttributeValues: { ':gameId': gameId },
+      FilterExpression: 'attribute_not_exists(#record_type)',
       ProjectionExpression: wordProjectionExpression,
-      ExpressionAttributeNames: wordProjectionAttributeNames
+      ExpressionAttributeNames: { ...wordProjectionAttributeNames, '#record_type': 'record_type' }
     };
     const res = await dynamodb.query(params).promise();
     return (res.Items || []).sort((a, b) => {
@@ -67,6 +68,19 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
       }
       return a.word.localeCompare(b.word);
     });
+  }
+
+  async function listWordsByName(gameId, word) {
+    const params = {
+      TableName: tables.words,
+      IndexName: 'game_id-word-index',
+      KeyConditionExpression: 'game_id = :gameId AND #word = :word',
+      ExpressionAttributeValues: { ':gameId': gameId, ':word': word },
+      ExpressionAttributeNames: { '#word': 'word', '#record_type': 'record_type' },
+      FilterExpression: 'attribute_not_exists(#record_type)'
+    };
+    const res = await dynamodb.query(params).promise();
+    return res.Items || [];
   }
 
   async function getCacheSignal(gameId) {
@@ -144,8 +158,19 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     return result.Item || null;
   }
 
-  async function createWordWithRelated(item, relatedItems = []) {
-    const transactItems = [{ Put: { TableName: tables.words, Item: item } }, ...relatedItems.map((relatedItem) => ({ Put: { TableName: tables.words, Item: relatedItem } }))];
+  async function createWordWithRelated(item, relatedItems = [], nameClaims = []) {
+    const transactItems = [
+      ...nameClaims.map((claim) => ({
+        Put: {
+          TableName: tables.words,
+          Item: claim.item,
+          ConditionExpression: 'attribute_not_exists(word_id) OR target_word_id = :targetWordId',
+          ExpressionAttributeValues: { ':targetWordId': claim.targetWordId }
+        }
+      })),
+      { Put: { TableName: tables.words, Item: item } },
+      ...relatedItems.map((relatedItem) => ({ Put: { TableName: tables.words, Item: relatedItem } }))
+    ];
     log('dataAccess.createWordWithRelated', { itemCount: transactItems.length });
     await dynamodb.transactWrite({ TransactItems: transactItems }).promise();
     return item;
@@ -188,6 +213,7 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     getProfile,
     getProfilesByUserNames,
     listWordsByGame,
+    listWordsByName,
     getCacheSignal,
     touchCacheSignal,
     listWordsByUserNameAndGame,

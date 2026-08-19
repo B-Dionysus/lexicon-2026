@@ -8,7 +8,7 @@
   --panel: #ffffff;
   --accent: #294d6d;
   --accent-2: #7e3d2c;
-  
+  --body_text: #000;
   /* Hardened the primary borders to stark dark charcoal for structural attitude */
   --border: #1a1a1a;
   --border-muted: #d4c7ac;
@@ -141,7 +141,7 @@ h1 {
 }
 
 .card a { 
-  color: var(--accent); 
+  color: var(--body_text); 
   font-weight: 700;
   text-decoration-thickness: 2px;
 }

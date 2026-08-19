@@ -1,3 +1,6 @@
+// Note--if anyone ever needs to clear the cache, you can call invalidateWordListCache() from the console. 
+// It will return a promise that resolves when the cache is cleared.
+
 // 1. All imports MUST go at the very top of ES Modules
 import { 
   getCurrentUserNameFromToken, 
@@ -57,7 +60,7 @@ function createWordCard(word) {
     [word.new_word_2]: word.new_word_2_id 
   };
   
-  const truncatedDef = word.definition.length > 200 ? word.definition.slice(0, 200) + '…' : word.definition;
+  const truncatedDef = word.definition.length > 500 ? word.definition.slice(0, 500) + '… (<a href="#">more</a>)' : word.definition;
   const definition = addUrlsToDefinition(truncatedDef, relatedWordsMap, state.gameId) || '';
 
   return `

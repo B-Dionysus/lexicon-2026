@@ -31,7 +31,7 @@ Resources:
   LexiconFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://lexicon-2026-deployments/bfeb3ad888fdf225b2f0f3e0b38cfbbe
+      CodeUri: s3://lexicon-2026-deployments/289fa40e7cb2173bbc748f005589f1d1
       Handler: handler.handler
       Policies:
       - DynamoDBCrudPolicy:

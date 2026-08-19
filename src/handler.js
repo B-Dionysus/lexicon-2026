@@ -136,12 +136,16 @@ async function getWord(wordId) {
   return dataAccess.getWord(wordId);
 }
 
+async function listWordsByName(gameId, word) {
+  return dataAccess.listWordsByName(gameId, word);
+}
+
 async function getGame(gameId) {
   return dataAccess.getGame(gameId);
 }
 
-async function createWord(item, relatedItems = []) {
-  return dataAccess.createWordWithRelated(item, relatedItems);
+async function createWord(item, relatedItems = [], nameClaims = []) {
+  return dataAccess.createWordWithRelated(item, relatedItems, nameClaims);
 }
 
 async function updateWord(wordId, updates) {
@@ -235,10 +239,33 @@ async function handleCreateWord(event) {
   const wordText = (body.word || '').trim().toLowerCase();
   if (!wordText) return error('Word is required', 400);
   const gameId = normalizeGameId(body.game_id || (event.queryStringParameters && event.queryStringParameters.game_id));
-  const wordId = body.word_id || uuidv4();
+  if (body.word_id) {
+    const existing = await getWord(body.word_id);
+    if (!existing) return error('Word not found', 404);
+    if (existing.user_name !== user.user_name) return error('Forbidden', 403);
+    const updated = await updateWord(body.word_id, {
+      definition: body.definition || '',
+      updated_at: new Date().toISOString()
+    });
+    await dataAccess.touchCacheSignal(existing.game_id);
+    invalidateWordListCache(existing.game_id);
+    return success({ word: updated });
+  }
+
+  const wordId = uuidv4();
   const now = new Date().toISOString();
   const new_1 = (body.new_word_1 || '').trim().toLowerCase();
   const new_2 = (body.new_word_2 || '').trim().toLowerCase();
+  if ((new_1 && new_1 === wordText) || (new_2 && new_2 === wordText) || (new_1 && new_1 === new_2)) {
+    return error('The word and related words must have different names', 400);
+  }
+
+  for (const candidate of [wordText, new_1, new_2].filter(Boolean)) {
+    const existingWords = await listWordsByName(gameId, candidate);
+    if (existingWords.length > 0) {
+      return error('A word with that name already exists in this game', 409);
+    }
+  }
   const new_1_uuid = uuidv4();
   const new_2_uuid = uuidv4();
   const relatedItems = [];
@@ -291,7 +318,28 @@ async function handleCreateWord(event) {
     updated_at: now,
     game_id: gameId
   };
-  await createWord(item, relatedItems);
+  const claimTargets = new Map([[wordText, wordId]]);
+  relatedItems.forEach((relatedItem) => {
+    if (!claimTargets.has(relatedItem.word)) claimTargets.set(relatedItem.word, relatedItem.word_id);
+  });
+  const nameClaims = [...claimTargets].map(([word, targetWordId]) => ({
+    targetWordId,
+    item: {
+      word_id: `__word_claim__${gameId}::${word}`,
+      word,
+      game_id: gameId,
+      record_type: 'word_claim',
+      target_word_id: targetWordId
+    }
+  }));
+  try {
+    await createWord(item, relatedItems, nameClaims);
+  } catch (err) {
+    if (err?.name === 'TransactionCanceledException' || err?.name === 'ConditionalCheckFailedException') {
+      return error('A word with that name already exists in this game', 409);
+    }
+    throw err;
+  }
   await dataAccess.touchCacheSignal(gameId);
   invalidateWordListCache(gameId);
   return success({ word: item });

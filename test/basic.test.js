@@ -288,16 +288,18 @@ test('handleCreateWord writes the main word and related words transactionally', 
   const originalDataAccess = handlerModule.__test__.dataAccess;
   const originalCreateWordWithRelated = originalDataAccess.createWordWithRelated;
   const originalTouchCacheSignal = originalDataAccess.touchCacheSignal;
+  const originalListWordsByName = originalDataAccess.listWordsByName;
 
   let createCalled = false;
   let capturedArgs;
 
-  originalDataAccess.createWordWithRelated = async (item, relatedItems) => {
+  originalDataAccess.createWordWithRelated = async (item, relatedItems, nameClaims) => {
     createCalled = true;
-    capturedArgs = { item, relatedItems };
+    capturedArgs = { item, relatedItems, nameClaims };
     return item;
   };
   originalDataAccess.touchCacheSignal = async () => '2026-01-01T00:00:00.000Z';
+  originalDataAccess.listWordsByName = async () => [];
 
   handlerModule.__test__.clearWordListCache();
   handlerModule.__test__.wordListCache.set('default', { words: [], cachedAt: new Date().toISOString() });
@@ -316,6 +318,7 @@ test('handleCreateWord writes the main word and related words transactionally', 
 
   handlerModule.__test__.dataAccess.createWordWithRelated = originalCreateWordWithRelated;
   handlerModule.__test__.dataAccess.touchCacheSignal = originalTouchCacheSignal;
+  handlerModule.__test__.dataAccess.listWordsByName = originalListWordsByName;
 
   assert.equal(createCalled, true);
   assert.equal(handlerModule.__test__.wordListCache.has('default'), false);
@@ -324,7 +327,30 @@ test('handleCreateWord writes the main word and related words transactionally', 
   assert.equal(payload.word.word, 'test');
   assert.equal(payload.word.game_id, 'default');
   assert.equal(capturedArgs.relatedItems.length, 2);
+  assert.equal(capturedArgs.nameClaims.length, 3);
   assert.equal(capturedArgs.item.user_name, 'researcher');
+});
+
+test('handleCreateWord rejects an existing related word before writing', async () => {
+  const originalDataAccess = handlerModule.__test__.dataAccess;
+  const originalListWordsByName = originalDataAccess.listWordsByName;
+  const originalCreateWordWithRelated = originalDataAccess.createWordWithRelated;
+  let createCalled = false;
+
+  originalDataAccess.listWordsByName = async (_gameId, word) => word === 'apple' ? [{ word_id: 'apple-id', word: 'apple' }] : [];
+  originalDataAccess.createWordWithRelated = async () => { createCalled = true; };
+
+  const token = 'Bearer ' + jwt.sign({ user_name: 'researcher' }, process.env.JWT_SECRET || 'dev-secret');
+  const response = await handlerModule.handleCreateWord({
+    headers: { Authorization: token },
+    body: JSON.stringify({ word: 'fruit', new_word_1: 'apple', game_id: 'default' })
+  });
+
+  originalDataAccess.listWordsByName = originalListWordsByName;
+  originalDataAccess.createWordWithRelated = originalCreateWordWithRelated;
+
+  assert.equal(response.statusCode, 409);
+  assert.equal(createCalled, false);
 });
 
 test('handleGetWords returns a cached word list on second call', async () => {
