@@ -32,10 +32,15 @@ function createWordCard(word) {
   const title = capitalize(word.word);
   const isDefined = Boolean(word.definition && word.definition.trim());
 
+  const graphicName = `torn${Math.floor(Math.random() * 7) + 1}.png`;
+  const angle = Math.floor(Math.random() * 10) - 5; // Random angle between -5 and +5 degrees
+  const bgangle = Math.floor(Math.random() * 260); // Random background angle between -40 and 40 degrees
+  const x_offset = Math.floor(Math.random() * 21) - 10; // Random x offset between -10 and +10 pixels
+  const y_offset = Math.floor(Math.random() * 21) - 10; // Random y offset between -10 and +10 pixels
   if (!isDefined) {
     const defineUrl = buildHref('/new-definition.html?word_id=' + word.word_id, state.gameId);
     return `
-      <article class="card">
+    <article class="card" style="--card-mask: url('./assets/${graphicName}'); --bg-angle: ${bgangle}deg; --card-angle: ${angle}deg; --x-offset: ${x_offset}px; --y-offset: ${y_offset}px;">
         <h2><a href="${defineUrl}">${title}</a></h2>
         <p><a href="${defineUrl}">Click here to define this word</a></p>
       </article>`;
@@ -56,9 +61,9 @@ function createWordCard(word) {
   const definition = addUrlsToDefinition(truncatedDef, relatedWordsMap, state.gameId) || '';
 
   return `
-    <article class="card">
+    <article class="card" style="--card-mask: url('./assets/${graphicName}'); --bg-angle: ${bgangle}deg; --card-angle: ${angle}deg; --x-offset: ${x_offset}px; --y-offset: ${y_offset}px;">
       <h2><a href="${wordUrl}">${title}</a></h2>
-      <div><a href="${authorUrl}">By ${authorName}</a></div>
+      <p><a href="${authorUrl}">By ${authorName}</a></p>
       <p>${definition}</p>
     </article>`;
 }

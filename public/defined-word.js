@@ -42,7 +42,8 @@ function updateEditButton(wordInfo) {
 async function renderWord() {
   const content = document.getElementById(wcontent);
   const loadingModal = document.getElementById('loadingModal');
-
+  const graphicName = `torn${Math.floor(Math.random() * 7) + 1}.png`;
+  content.style.setProperty('--card-graphic', `url('./assets/${graphicName}')`);
   try {
     // Show modal once at the very beginning
     loadingModal.classList.remove('hidden');

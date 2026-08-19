@@ -25,6 +25,8 @@ async function loadProfile() {
       return {};
     });
     const content = document.getElementById('profileContent');
+    const graphicName = `torn${Math.floor(Math.random() * 7) + 1}.png`;
+    content.style.setProperty('--card-graphic', `url('./assets/${graphicName}')`);
     if (!response.ok) {
       content.innerHTML = '<p class="error">Unable to load profile.</p>';
       document.getElementById('loadingModal').classList.add('hidden');
