@@ -12,7 +12,8 @@ This repository contains a lightweight Lexicon 2026 implementation with:
     - My bad, it just says "Forbidden" in tiny text at the bottom
 - Truncated main page posts have a (more) link that goes nowhere
 - I don't think you can do carriage returns in this game. Ideally you should get access to full markup, but at the very least you need carriage returns!
-- 
+- Some way to signal "Everyone has finished, time for the next letter!"
+- A way to enter emails, and then get email either a) each time someone posts a letter, and / or b) when everyone has finished and it's time to start the next round
 
 ## Invalidate Page Cache
 - invalidateWordListCache()
