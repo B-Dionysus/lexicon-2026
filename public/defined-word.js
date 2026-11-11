@@ -65,7 +65,7 @@ async function renderWord() {
     content.innerHTML = `
       <h1>${capitalizedWord}</h1>
       <p>By <a href="${authorUrl}">${wordInfo.researcher_name || 'Unknown'}</a></p>
-      <p>${definition}</p>
+      <p class="definition">${definition}</p>
     `;
 
     console.log('[FRONTEND defined-word] rendered word', wordInfo.word_id || wordId);

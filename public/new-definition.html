@@ -16,6 +16,7 @@
     <main>
       <p><a href="/index.html">Home</a></p>
       <h1>New Definition</h1>
+      <div id="message" class="error hidden" role="alert" aria-live="assertive"></div>
       <form id="definitionForm">
         <label>Word<input name="word" id="word" required /></label>
         <label>Definition<textarea name="definition" id="definition" required></textarea></label>
@@ -23,7 +24,6 @@
         <label>New Word 2<input name="new_word_2" id="new_word_2" /></label>
         <button class='btn' id="submit" type="submit">Save</button>
       </form>
-      <div id="message" class="error"></div>
     </main>
     <script src="/config.js"></script>
     <script type="module" src="/new-definition.js"></script>

@@ -309,7 +309,7 @@ test('handleCreateWord writes the main word and related words transactionally', 
     headers: { Authorization: token },
     body: JSON.stringify({
       word: 'Test',
-      definition: 'A test word',
+      definition: 'A test word\n\nA second paragraph',
       new_word_1: 'child1',
       new_word_2: 'child2',
       game_id: 'default'
@@ -325,6 +325,8 @@ test('handleCreateWord writes the main word and related words transactionally', 
   assert.equal(response.statusCode, 200);
   const payload = JSON.parse(response.body);
   assert.equal(payload.word.word, 'test');
+  assert.equal(payload.word.definition, 'A test word\n\nA second paragraph');
+  assert.equal(capturedArgs.item.definition, 'A test word\n\nA second paragraph');
   assert.equal(payload.word.game_id, 'default');
   assert.equal(capturedArgs.relatedItems.length, 2);
   assert.equal(capturedArgs.nameClaims.length, 3);
@@ -353,9 +355,16 @@ test('handleCreateWord rejects an existing related word before writing', async (
   assert.equal(createCalled, false);
 });
 
-test('handleGetWords returns a cached word list on second call', async () => {
+test('handleGetWords returns a cached word list on second call', async (t) => {
   const originalListWords = handlerModule.__test__.dataAccess.listWordsByGame;
   const originalGetCacheSignal = handlerModule.__test__.dataAccess.getCacheSignal;
+  const originalGetProfiles = handlerModule.__test__.dataAccess.getProfilesByUserNames;
+  t.after(() => {
+    handlerModule.__test__.dataAccess.listWordsByGame = originalListWords;
+    handlerModule.__test__.dataAccess.getCacheSignal = originalGetCacheSignal;
+    handlerModule.__test__.dataAccess.getProfilesByUserNames = originalGetProfiles;
+    handlerModule.__test__.clearWordListCache();
+  });
 
   let listCalls = 0;
   handlerModule.__test__.dataAccess.listWordsByGame = async () => {
@@ -363,21 +372,31 @@ test('handleGetWords returns a cached word list on second call', async () => {
     return [{ word_id: 'word-1', word: 'alpha', user_name: 'researcher', game_id: 'default' }];
   };
   handlerModule.__test__.dataAccess.getCacheSignal = async () => 'token-1';
+  handlerModule.__test__.dataAccess.getProfilesByUserNames = async () => [
+    { user_name: 'researcher', researcher_name: 'Ada' }
+  ];
 
   handlerModule.__test__.clearWordListCache();
 
-  await handlerModule.handleGetWords({ queryStringParameters: { game_id: 'default' } });
-  await handlerModule.handleGetWords({ queryStringParameters: { game_id: 'default' } });
-
-  handlerModule.__test__.dataAccess.listWordsByGame = originalListWords;
-  handlerModule.__test__.dataAccess.getCacheSignal = originalGetCacheSignal;
+  const first = await handlerModule.handleGetWords({ queryStringParameters: { game_id: 'default' } });
+  const second = await handlerModule.handleGetWords({ queryStringParameters: { game_id: 'default' } });
 
   assert.equal(listCalls, 1);
+  assert.equal(first.statusCode, 200);
+  assert.equal(second.statusCode, 200);
+  assert.equal(JSON.parse(second.body).words[0].researcher_name, 'Ada');
 });
 
-test('handleGetWords refreshes cached word list when shared signal changes', async () => {
+test('handleGetWords refreshes cached word list when shared signal changes', async (t) => {
   const originalListWords = handlerModule.__test__.dataAccess.listWordsByGame;
   const originalGetCacheSignal = handlerModule.__test__.dataAccess.getCacheSignal;
+  const originalGetProfiles = handlerModule.__test__.dataAccess.getProfilesByUserNames;
+  t.after(() => {
+    handlerModule.__test__.dataAccess.listWordsByGame = originalListWords;
+    handlerModule.__test__.dataAccess.getCacheSignal = originalGetCacheSignal;
+    handlerModule.__test__.dataAccess.getProfilesByUserNames = originalGetProfiles;
+    handlerModule.__test__.clearWordListCache();
+  });
 
   let listCalls = 0;
   const signalValues = ['old-token', 'new-token'];
@@ -387,16 +406,19 @@ test('handleGetWords refreshes cached word list when shared signal changes', asy
     return [{ word_id: 'word-1', word: 'alpha', user_name: 'researcher', game_id: 'default' }];
   };
   handlerModule.__test__.dataAccess.getCacheSignal = async () => signalValues.shift();
+  handlerModule.__test__.dataAccess.getProfilesByUserNames = async () => [
+    { user_name: 'researcher', researcher_name: 'Ada' }
+  ];
 
   handlerModule.__test__.clearWordListCache();
 
-  await handlerModule.handleGetWords({ queryStringParameters: { game_id: 'default' } });
-  await handlerModule.handleGetWords({ queryStringParameters: { game_id: 'default' } });
-
-  handlerModule.__test__.dataAccess.listWordsByGame = originalListWords;
-  handlerModule.__test__.dataAccess.getCacheSignal = originalGetCacheSignal;
+  const first = await handlerModule.handleGetWords({ queryStringParameters: { game_id: 'default' } });
+  const second = await handlerModule.handleGetWords({ queryStringParameters: { game_id: 'default' } });
 
   assert.equal(listCalls, 2);
+  assert.equal(first.statusCode, 200);
+  assert.equal(second.statusCode, 200);
+  assert.equal(JSON.parse(second.body).words[0].researcher_name, 'Ada');
 });
 
 test('handleUpdateWord invalidates the cached word list when a word changes', async () => {
@@ -415,7 +437,7 @@ test('handleUpdateWord invalidates the cached word list when a word changes', as
   const response = await handlerModule.handleUpdateWord({
     headers: { Authorization: token },
     pathParameters: { word_id: 'word-1' },
-    body: JSON.stringify({ definition: 'Updated definition' })
+    body: JSON.stringify({ definition: 'Updated definition\n\nSecond paragraph' })
   });
 
   handlerModule.__test__.dataAccess.getWord = originalGetWord;
@@ -423,7 +445,39 @@ test('handleUpdateWord invalidates the cached word list when a word changes', as
   handlerModule.__test__.dataAccess.touchCacheSignal = originalTouchCacheSignal;
 
   assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body).word.definition, 'Updated definition\n\nSecond paragraph');
   assert.equal(handlerModule.__test__.wordListCache.has('default'), false);
+});
+
+test('handleCreateWord preserves line breaks when editing an existing word', async (t) => {
+  const dataAccess = handlerModule.__test__.dataAccess;
+  const originalGetWord = dataAccess.getWord;
+  const originalUpdateWord = dataAccess.updateWord;
+  const originalTouchCacheSignal = dataAccess.touchCacheSignal;
+  t.after(() => {
+    dataAccess.getWord = originalGetWord;
+    dataAccess.updateWord = originalUpdateWord;
+    dataAccess.touchCacheSignal = originalTouchCacheSignal;
+  });
+
+  dataAccess.getWord = async () => ({ word_id: 'word-1', user_name: 'researcher', game_id: 'default' });
+  let savedDefinition;
+  dataAccess.updateWord = async (wordId, updates) => {
+    savedDefinition = updates.definition;
+    return { word_id: wordId, ...updates };
+  };
+  dataAccess.touchCacheSignal = async () => '2026-01-01T00:00:00.000Z';
+
+  const token = 'Bearer ' + jwt.sign({ user_name: 'researcher' }, process.env.JWT_SECRET || 'dev-secret');
+  const definition = 'First line\n\nSecond paragraph';
+  const response = await handlerModule.handleCreateWord({
+    headers: { Authorization: token },
+    body: JSON.stringify({ word_id: 'word-1', word: 'alpha', definition })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(savedDefinition, definition);
+  assert.equal(JSON.parse(response.body).word.definition, definition);
 });
 
 test('handleSignup creates a new profile and returns a token', async () => {

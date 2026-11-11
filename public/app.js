@@ -60,14 +60,16 @@ function createWordCard(word) {
     [word.new_word_2]: word.new_word_2_id 
   };
   
-  const truncatedDef = word.definition.length > 500 ? word.definition.slice(0, 500) + '… (<a href="#">more</a>)' : word.definition;
-  const definition = addUrlsToDefinition(truncatedDef, relatedWordsMap, state.gameId) || '';
+  const isTruncated = word.definition.length > 500;
+  const truncatedDef = isTruncated ? word.definition.slice(0, 500) : word.definition;
+  const definition = (addUrlsToDefinition(truncatedDef, relatedWordsMap, state.gameId) || '')
+    + (isTruncated ? `… (<a href="${wordUrl}">more</a>)` : '');
 
   return `
     <article class="card" style="--card-mask: url('./assets/${graphicName}'); --bg-angle: ${bgangle}deg; --card-angle: ${angle}deg; --x-offset: ${x_offset}px; --y-offset: ${y_offset}px;">
       <h2><a href="${wordUrl}">${title}</a></h2>
       <p><a href="${authorUrl}">By ${authorName}</a></p>
-      <p>${definition}</p>
+      <p class="definition">${definition}</p>
     </article>`;
 }
 

@@ -13,6 +13,7 @@ function setMessage(text, isError = true) {
   const el = document.getElementById('message');
   if (!el) return;
   el.textContent = text;
+  el.classList.toggle('hidden', !text);
   el.classList.toggle('error', isError);
 }
 
@@ -90,7 +91,14 @@ window.addEventListener('DOMContentLoaded', () => {
         return {};
       });
       if (!response.ok) {
-        setMessage(result.error || 'Unable to save');
+        const serverMessage = result.error;
+        const isGenericForbidden = typeof serverMessage === 'string' && serverMessage.toLowerCase() === 'forbidden';
+        const message = isGenericForbidden
+          ? (wordId
+            ? 'You do not have permission to edit this word. Only its author can make changes.'
+            : 'The save was rejected. The word may already exist in this game, or your request was not authorized. Check the word name and your sign-in, then try again.')
+          : serverMessage || 'Unable to save. Please try again.';
+        setMessage(message);
         return;
       }
       console.log('[FRONTEND new-definition] submit successful, redirecting to index');

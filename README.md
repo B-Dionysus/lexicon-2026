@@ -10,10 +10,11 @@ This repository contains a lightweight Lexicon 2026 implementation with:
 ## To do!
 - POST errors (like trying to create an existing word again) return a 403 with no feedback to the user
     - My bad, it just says "Forbidden" in tiny text at the bottom
-- Truncated main page posts have a (more) link that goes nowhere
-- I don't think you can do carriage returns in this game. Ideally you should get access to full markup, but at the very least you need carriage returns!
+- Support richer markup in definitions.
 - Some way to signal "Everyone has finished, time for the next letter!"
 - A way to enter emails, and then get email either a) each time someone posts a letter, and / or b) when everyone has finished and it's time to start the next round
+
+Definitions preserve line breaks entered in the editor on both the main page and the full definition page.
 
 ## Invalidate Page Cache
 - invalidateWordListCache()

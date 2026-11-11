@@ -67,6 +67,10 @@ h1 {
   font-weight: 500;
 }
 
+.definition {
+  white-space: pre-line;
+}
+
 /* ==========================================
    DICTIONARY CARDS (The Core Shift)
    ========================================== */
@@ -207,6 +211,15 @@ input.invalid, textarea.invalid {
   font-size: 0.9rem;
 }
 
+#message {
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 2px solid var(--accent-2);
+  background: #fff5f4;
+  font-size: 1.1rem;
+  line-height: 1.45;
+}
+
 .small { 
   font-size: 0.9rem; 
   color: #555; 
@@ -328,5 +341,4 @@ textarea:read-only {
   75%  { content: "[ INDEXING: U-Z ]"; }
   100% { content: "[ COMPILING...  ]"; }
 }
-
 
