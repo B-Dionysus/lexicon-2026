@@ -20,7 +20,7 @@ Globals:
         JWT_SECRET: !Ref JwtSecret
 
 Resources:
-  LexiconApi:
+  ServerlessRestApi:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
@@ -47,7 +47,7 @@ Resources:
         Api:
           Type: Api
           Properties:
-            RestApiId: !Ref LexiconApi
+            RestApiId: !Ref ServerlessRestApi
             Path: /{proxy+}
             Method: any
 
@@ -113,4 +113,4 @@ Resources:
 Outputs:
   ApiEndpoint:
     Description: API Gateway endpoint for Lexicon 2026
-    Value: !Sub "https://${LexiconApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"

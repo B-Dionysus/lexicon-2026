@@ -4,8 +4,13 @@ set -euo pipefail
 REGION="${AWS_REGION:-us-east-1}"
 STACK_NAME="lexicon-2026"
 BUCKET_NAME="lexicon-2026-deployments"
-JWT_SECRET="${JWT_SECRET:-replace-me}"
+BUILD_DIR=".aws-sam/lexicon-build"
+CONFIG_FILE="$(mktemp --suffix=.toml)"
+trap 'rm -f "$CONFIG_FILE"' EXIT
+printf 'version = 0.1\n' > "$CONFIG_FILE"
 
-aws s3 mb "s3://${BUCKET_NAME}" --region "$REGION" 2>/dev/null || true
-sam package --template-file template.yaml --output-template-file packaged.yaml --s3-bucket "$BUCKET_NAME" --region "$REGION"
-sam deploy --template-file packaged.yaml --stack-name "$STACK_NAME" --capabilities CAPABILITY_IAM --parameter-overrides JwtSecret="$JWT_SECRET" --region "$REGION" --resolve-s3
+aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --query 'Stacks[0].StackStatus' --output text --no-cli-pager >/dev/null
+sam build --template-file template.yaml --build-dir "$BUILD_DIR" --config-file "$CONFIG_FILE"
+sam deploy --template-file "$BUILD_DIR/template.yaml" --config-file "$CONFIG_FILE" \
+  --stack-name "$STACK_NAME" --s3-bucket "$BUCKET_NAME" \
+  --capabilities CAPABILITY_IAM --region "$REGION" --confirm-changeset

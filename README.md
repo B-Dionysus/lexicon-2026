@@ -8,8 +8,6 @@ This repository contains a lightweight Lexicon 2026 implementation with:
 - a Node-based handler in src/handler.js for AWS Lambda
 
 ## To do!
-- POST errors (like trying to create an existing word again) return a 403 with no feedback to the user
-    - My bad, it just says "Forbidden" in tiny text at the bottom
 - Support richer markup in definitions.
 - Some way to signal "Everyone has finished, time for the next letter!"
 - A way to enter emails, and then get email either a) each time someone posts a letter, and / or b) when everyone has finished and it's time to start the next round
@@ -29,12 +27,23 @@ Then open http://localhost:3000.
 
 ## Deploy to AWS
 
-Make sure the static files are up to date with:
-aws s3 sync public/ s3://lexicon-2026.sixbynine.com --delete
+Install the AWS and SAM CLIs and authenticate the `lexicon` AWS profile. Run
+`aws sso login --profile lexicon` if the profile uses IAM Identity Center.
 
-Then just use ./deploy.sh
+To update the existing backend stack, run:
 
+```bash
+AWS_PROFILE=lexicon ./deploy.sh
+```
 
-1. Install the AWS SAM CLI.
-2. Set a JWT secret and package the application.
-3. Run `sam deploy --guided`.
+The script builds the Lambda and its dependencies, targets the existing
+`lexicon-2026` stack, and asks for confirmation of the CloudFormation change
+set. It keeps the stack's existing JWT secret; do not use it to create a new
+stack. Review the change set for replacements or deletions before confirming.
+
+To update the static site separately, review the files to be deleted first:
+
+```bash
+aws s3 sync public/ s3://lexicon-2026.sixbynine.com --delete --dryrun --profile lexicon
+aws s3 sync public/ s3://lexicon-2026.sixbynine.com --delete --profile lexicon
+```
