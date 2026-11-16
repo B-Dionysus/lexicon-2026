@@ -177,6 +177,19 @@ label {
   letter-spacing: 0.05em;
 }
 
+.notification-option {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.notification-option input {
+  margin: 0;
+  padding: 0;
+}
+
 input, textarea { 
   padding: 0.8rem; 
   border: 2px solid var(--border); 
@@ -225,7 +238,7 @@ input.invalid, textarea.invalid {
   color: #555; 
 }
 
-input:read-only, 
+input:read-only:not([type="checkbox"]),
 textarea:read-only {
   background-color: #f0ede4; 
   color: #555;               

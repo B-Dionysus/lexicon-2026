@@ -13,7 +13,8 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     const result = await dynamodb.get({
       TableName: tables.profiles,
       Key: { user_name: userName },
-      ProjectionExpression: 'user_name,researcher_name,researcher_bio,password_hash,created_at,updated_at'
+      ProjectionExpression: 'user_name,researcher_name,researcher_bio,#email,notify_word_created,notify_round_complete,password_hash,created_at,updated_at',
+      ExpressionAttributeNames: { '#email': 'email' }
     }).promise();
     return result.Item || null;
   }
@@ -205,7 +206,7 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
       ExpressionAttributeValues: expressionAttributeValues,
       ReturnValues: 'ALL_NEW'
     };
-    log('dataAccess.updateProfile', userName, updates);
+    log('dataAccess.updateProfile', userName);
     await dynamodb.update(params).promise();
   }
 

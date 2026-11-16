@@ -20,6 +20,7 @@ const {
   error
 } = require('./lib/utils');
 const { createDataAccess } = require('./lib/dataAccess');
+const { normalizeEmail, getEmailPreferences, sendWelcome, welcomeEmail } = require('./lib/email');
 
 function createDynamoDbAdapter(documentClient) {
   return {
@@ -155,6 +156,10 @@ async function updateWord(wordId, updates) {
 async function handleSignup(event) {
   const body = extractBody(event);
   const { user_name, password, researcher_name, researcher_bio, repeat_password } = body;
+  const email = normalizeEmail(body.email);
+  if (email === null) return error('Please enter a valid email address', 400);
+  const preferences = getEmailPreferences(body);
+  if (!preferences) return error('Invalid email preferences', 400);
   if (!user_name || !password || !researcher_name || !researcher_bio || !repeat_password) {
     return error('All fields are required', 400);
   }
@@ -168,13 +173,16 @@ async function handleSignup(event) {
     user_name,
     researcher_name,
     researcher_bio,
+    email: email || '',
+    ...preferences,
     password_hash: passwordHash,
     created_at: now,
     updated_at: now
   };
   await dynamodb.put({ TableName: TABLE_PROFILES, Item: profile, ConditionExpression: 'attribute_not_exists(user_name)' }).promise();
   const token = jwt.sign({ user_name }, JWT_SECRET, { expiresIn: '7d' });
-  return success({ token, profile: { user_name, researcher_name, researcher_bio, created_at: now, updated_at: now } });
+  const warning = await sendWelcome(email, preferences);
+  return success({ token, profile: { user_name, researcher_name, researcher_bio, email: profile.email, ...preferences, created_at: now, updated_at: now }, ...(warning && { warning }) });
 }
 
 async function handleLogin(event) {
@@ -376,7 +384,11 @@ async function handleGetProfile(event) {
   if (!profile) return error('Profile not found', 404);
   const gameId = normalizeGameId(event.queryStringParameters && event.queryStringParameters.game_id);
   const authoredWords = await dataAccess.listWordsByUserNameAndGame(userName, gameId);
-  return success({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at }, words: authoredWords });
+  const user = getCurrentUser(event);
+  const ownEmail = user && user.user_name === profile.user_name ? { email: profile.email || '', ...getEmailPreferences({}, profile) } : {};
+  const response = success({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at, ...ownEmail }, words: authoredWords });
+  response.headers['Cache-Control'] = 'no-store';
+  return response;
 }
 
 async function handleInvalidateCache(event) {
@@ -408,24 +420,35 @@ async function handleUpdateProfile(event) {
   if (!user) return error('Authentication required', 401);
   const body = extractBody(event);
   const userName = body.user_name;
-  debugLog("body=", body)
-  debugLog("event=", event)
   if (!userName) return error('user_name is required', 400);
   const existing = await getProfile(userName);
   if (!existing) return error('Profile not found', 404);
   if (existing.user_name !== user.user_name) return error('Forbidden', 403);
+  const email = normalizeEmail(body.email);
+  if (email === null) return error('Please enter a valid email address', 400);
+  const previousPreferences = getEmailPreferences({}, existing);
+  const preferences = getEmailPreferences(body, existing);
+  if (!preferences) return error('Invalid email preferences', 400);
   const updates = {
     researcher_name: body.researcher_name || existing.researcher_name,
     researcher_bio: body.researcher_bio || existing.researcher_bio,
     updated_at: new Date().toISOString()
   };
+  if (email !== undefined) updates.email = email;
+  for (const key of Object.keys(preferences)) {
+    if (body[key] !== undefined) updates[key] = preferences[key];
+  }
   if (body.password) {
     if (body.password.length < 8) return error('Password must be at least 8 characters', 400);
     if (body.password !== body.repeat_password) return error('Passwords must match', 400);
     updates.password_hash = bcrypt.hashSync(body.password, 12);
   }
   await dataAccess.updateProfile(userName, updates);
-  return success({ profile: { user_name: userName, researcher_name: updates.researcher_name, researcher_bio: updates.researcher_bio, updated_at: updates.updated_at } });
+  const savedEmail = email === undefined ? (existing.email || '') : email;
+  const changed = savedEmail !== (existing.email || '') ||
+    Object.keys(preferences).some((key) => preferences[key] !== previousPreferences[key]);
+  const warning = changed ? await sendWelcome(savedEmail, preferences) : undefined;
+  return success({ profile: { user_name: userName, researcher_name: updates.researcher_name, researcher_bio: updates.researcher_bio, email: savedEmail, ...preferences, updated_at: updates.updated_at }, ...(warning && { warning }) });
 }
 
 async function route(event) {
@@ -493,6 +516,7 @@ exports.handleInvalidateCache = handleInvalidateCache;
 exports.__test__ = {
   dataAccess,
   dynamodb,
+  welcomeEmail,
   clearWordListCache,
   invalidateWordListCache,
   wordListCache

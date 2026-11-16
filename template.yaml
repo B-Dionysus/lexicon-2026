@@ -9,6 +9,12 @@ Parameters:
     Default: replace-me
 
 Globals:
+  # SAM's implicit API preserves the existing ServerlessRestApi logical ID.
+  Api:
+    Cors:
+      AllowOrigin: "'*'"
+      AllowHeaders: "'Content-Type,Authorization'"
+      AllowMethods: "'OPTIONS,GET,POST,PUT,DELETE,PATCH,HEAD'"
   Function:
     Timeout: 30
     Runtime: nodejs22.x
@@ -18,17 +24,9 @@ Globals:
         PROFILES_TABLE: lexicon-2026-profiles
         CACHE_SIGNALS_TABLE: lexicon-2026-cache-signals
         JWT_SECRET: !Ref JwtSecret
+        EMAIL_FROM: lexicon@benjamindionys.us
 
 Resources:
-  ServerlessRestApi:
-    Type: AWS::Serverless::Api
-    Properties:
-      StageName: Prod
-      Cors:
-        AllowOrigin: "'*'"
-        AllowHeaders: "'Content-Type,Authorization'"
-        AllowMethods: "'OPTIONS,GET,POST,PUT,DELETE,PATCH,HEAD'"
-
   LexiconFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -43,11 +41,17 @@ Resources:
             TableName: !Ref CacheSignalsTable
         - DynamoDBCrudPolicy:
             TableName: lexicon-2026-games
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  ses:FromAddress: lexicon@benjamindionys.us
       Events:
         Api:
           Type: Api
           Properties:
-            RestApiId: !Ref ServerlessRestApi
             Path: /{proxy+}
             Method: any
 

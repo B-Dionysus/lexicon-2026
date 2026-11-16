@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { normalizeGameId, decorateWordsWithResearcherNames } = require('./lib/utils');
+const { normalizeEmail, getEmailPreferences } = require('./lib/email');
 
 const app = express();
 app.use(express.json());
@@ -92,6 +93,10 @@ app.post('/api/words', authMiddleware, (req, res) => {
 app.post('/api/signup', (req, res) => {
   debugLog('POST /api/signup body keys', Object.keys(req.body || {}));
   const { user_name, password, researcher_name, researcher_bio, repeat_password } = req.body || {};
+  const email = normalizeEmail(req.body.email);
+  if (email === null) return res.status(400).json({ error: 'Please enter a valid email address' });
+  const preferences = getEmailPreferences(req.body);
+  if (!preferences) return res.status(400).json({ error: 'Invalid email preferences' });
   if (!user_name || !password || !researcher_name || !researcher_bio || !repeat_password) {
     debugLog('POST /api/signup missing fields');
     return res.status(400).json({ error: 'All fields are required' });
@@ -101,11 +106,11 @@ app.post('/api/signup', (req, res) => {
   if (profiles.some((profile) => profile.user_name === user_name)) return res.status(409).json({ error: 'User already exists' });
   const passwordHash = bcrypt.hashSync(password, 12);
   const now = new Date().toISOString();
-  const profile = { user_name, researcher_name, researcher_bio, password_hash: passwordHash, created_at: now, updated_at: now };
+  const profile = { user_name, researcher_name, researcher_bio, email: email || '', ...preferences, password_hash: passwordHash, created_at: now, updated_at: now };
   profiles.push(profile);
   const token = jwt.sign({ user_name }, JWT_SECRET, { expiresIn: '7d' });
   debugLog('POST /api/signup created', user_name);
-  res.json({ token, profile: { user_name, researcher_name, researcher_bio, created_at: now, updated_at: now } });
+  res.json({ token, profile: { user_name, researcher_name, researcher_bio, email: profile.email, ...preferences, created_at: now, updated_at: now }, ...(email && { warning: 'Your profile was saved, but the local mock API does not send welcome emails.' }) });
 });
 
 app.post('/api/login', (req, res) => {
@@ -131,12 +136,22 @@ app.get('/api/profiles/:user_name', (req, res) => {
   const gameId = normalizeGameId(req.query.game_id);
   const authoredWords = words.filter((word) => word.user_name === profile.user_name && word.game_id === gameId);
   debugLog('GET /api/profiles authoredWords', authoredWords.length);
-  res.json({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at }, words: authoredWords });
+  const token = (req.get('Authorization') || '').match(/^Bearer\s+(.+)$/i);
+  let user;
+  if (token) {
+    try { user = jwt.verify(token[1], JWT_SECRET); } catch (err) { debugLog('GET profile: invalid token', err.name); }
+  }
+  const ownEmail = user && user.user_name === profile.user_name ? { email: profile.email || '', ...getEmailPreferences({}, profile) } : {};
+  res.set('Cache-Control', 'no-store');
+  res.json({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at, ...ownEmail }, words: authoredWords });
 });
 
-app.put('/api/profiles/:user_name', authMiddleware, (req, res) => {
+app.post('/api/profiles/', authMiddleware, updateProfile);
+app.put('/api/profiles/:user_name', authMiddleware, updateProfile);
+
+function updateProfile(req, res) {
   debugLog('PUT /api/profiles/:user_name updating', req.params.user_name);
-  const profile = profiles.find((entry) => entry.user_name === req.params.user_name);
+  const profile = profiles.find((entry) => entry.user_name === (req.params.user_name || req.body.user_name));
   if (!profile) {
     debugLog('PUT /api/profiles not found', req.params.user_name);
     return res.status(404).json({ error: 'Profile not found' });
@@ -145,13 +160,25 @@ app.put('/api/profiles/:user_name', authMiddleware, (req, res) => {
     debugLog('PUT /api/profiles forbidden', req.user && req.user.user_name);
     return res.status(403).json({ error: 'Forbidden' });
   }
-  const updated = { ...profile, ...req.body, updated_at: new Date().toISOString() };
+  const email = normalizeEmail(req.body.email);
+  if (email === null) return res.status(400).json({ error: 'Please enter a valid email address' });
+  const previousPreferences = getEmailPreferences({}, profile);
+  const preferences = getEmailPreferences(req.body, profile);
+  if (!preferences) return res.status(400).json({ error: 'Invalid email preferences' });
+  const savedEmail = email === undefined ? (profile.email || '') : email;
+  const shouldSend = savedEmail && (savedEmail !== (profile.email || '') ||
+    Object.keys(preferences).some((key) => preferences[key] !== previousPreferences[key]));
+  const updated = { ...profile, researcher_name: req.body.researcher_name || profile.researcher_name, researcher_bio: req.body.researcher_bio || profile.researcher_bio, updated_at: new Date().toISOString() };
+  if (email !== undefined) updated.email = email;
+  for (const key of Object.keys(preferences)) {
+    if (req.body[key] !== undefined) updated[key] = preferences[key];
+  }
   if (req.body.password) {
     updated.password_hash = bcrypt.hashSync(req.body.password, 12);
   }
   Object.assign(profile, updated);
   debugLog('PUT /api/profiles updated', profile.user_name);
-  res.json({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at } });
-});
+  res.json({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, email: profile.email || '', ...preferences, created_at: profile.created_at, updated_at: profile.updated_at }, ...(shouldSend && { warning: 'Your profile was saved, but the local mock API does not send welcome emails.' }) });
+}
 
 module.exports = app;

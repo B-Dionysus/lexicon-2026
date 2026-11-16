@@ -10,9 +10,22 @@ This repository contains a lightweight Lexicon 2026 implementation with:
 ## To do!
 - Support richer markup in definitions.
 - Some way to signal "Everyone has finished, time for the next letter!"
-- A way to enter emails, and then get email either a) each time someone posts a letter, and / or b) when everyone has finished and it's time to start the next round
+- Email notifications when a player posts or a round is complete.
 
 Definitions preserve line breaks entered in the editor on both the main page and the full definition page.
+
+Profiles can optionally include a private email address. A welcome email is sent
+when the address or notification preferences are added or changed; it summarizes
+the preferences. Word and round notifications are not yet implemented. Addresses
+are not verified. If SES rejects
+the send, the profile is saved and the player is warned. Local mock API saves
+addresses but does not send mail.
+
+SES must have `lexicon@benjamindionys.us` (or its domain) verified as a sender
+in the deployment region. While SES is in the sandbox, recipients must also be
+verified; request production access to send to unverified recipients. The Lambda
+role is restricted to sending from this address. An accepted send is not a
+guarantee of delivery.
 
 ## Invalidate Page Cache
 - invalidateWordListCache()
@@ -28,7 +41,7 @@ Then open http://localhost:3000.
 ## Deploy to AWS
 
 Install the AWS and SAM CLIs and authenticate the `lexicon` AWS profile. Run
-`aws sso login --profile lexicon` if the profile uses IAM Identity Center.
+`aws sso login --profile lexicon --use-device-code` if the profile uses IAM Identity Center.
 
 To update the existing backend stack, run:
 
@@ -40,6 +53,8 @@ The script builds the Lambda and its dependencies, targets the existing
 `lexicon-2026` stack, and asks for confirmation of the CloudFormation change
 set. It keeps the stack's existing JWT secret; do not use it to create a new
 stack. Review the change set for replacements or deletions before confirming.
+The API is implicit so SAM retains the existing `ServerlessRestApi` logical ID;
+renaming it would replace the API endpoint.
 
 To update the static site separately, review the files to be deleted first:
 

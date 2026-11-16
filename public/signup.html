@@ -16,9 +16,13 @@
         <label>Repeat Password<input name="repeat_password" type="password" required /></label>
         <label>Researcher Name<input name="researcher_name" required /></label>
         <label>Researcher Bio<textarea name="researcher_bio" required></textarea></label>
+        <label>Email (optional)<input name="email" type="email" autocomplete="email" maxlength="254" /></label>
+        <p>Your email address is private. Adding or changing it or these preferences sends a welcome email.</p>
+        <label class="notification-option"><input name="notify_word_created" type="checkbox" /> Email me when a player creates a word</label>
+        <label class="notification-option"><input name="notify_round_complete" type="checkbox" /> Email me when all players have completed their word</label>
         <button class='btn' type="submit">Create Profile</button>
       </form>
-      <div id="message" class="error"></div>
+      <div id="message" class="error" role="alert"></div>
     </main>
     <script src="/config.js"></script>
     <script src="/auth.js"></script>

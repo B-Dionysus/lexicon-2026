@@ -38,7 +38,9 @@ async function submitProfile(formId, endpoint) {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
-    console.log('[FRONTEND editProfile] submitProfile', endpoint, data, data.user_name);
+    data.notify_word_created = form.elements.notify_word_created.checked;
+    data.notify_round_complete = form.elements.notify_round_complete.checked;
+    console.log('[FRONTEND editProfile] submitProfile', endpoint);
     try {
       const response = await fetch(`${window.APP_CONFIG.apiBase}/${endpoint}`, {
         method: 'POST',
@@ -47,13 +49,15 @@ async function submitProfile(formId, endpoint) {
       });
       console.log('[FRONTEND editProfile] submitProfile: post done status=', response.status);
       const result = await readResponseBody(response);
-      console.log('[FRONTEND editProfile] submitProfile: post done result=', result);
       if (!response.ok) {
         console.warn('[FRONTEND editProfile] error response', result);
         setMessage(result.error || 'Request failed');
         return;
       }
-      console.log('[FRONTEND editProfile] received token, storing and redirecting');
+      if (result.warning) {
+        setMessage(result.warning);
+        return;
+      }
       redirectHome();
     } catch (err) {
       console.error('[FRONTEND editProfile] submitProfile exception', err);
@@ -63,22 +67,30 @@ async function submitProfile(formId, endpoint) {
 }
 
 async function updateProfileForm() {
-  console.log('[FRONTEND editProfile] updateProfileForm', currentUserName, gameId);
-  const response = await fetch(`${window.APP_CONFIG.apiBase}/profiles/${encodeURIComponent(currentUserName || '')}?game_id=${encodeURIComponent(gameId)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-  console.log('[FRONTEND editProfile] updateProfileForm status', response.status);
-  const data = await response.json().catch((err) => {
-    console.error('[FRONTEND editProfile] json parse error', err);
-    return {};
-  });
-  if (!response.ok) return;
+  const form = document.getElementById('editProfileForm');
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    console.log('[FRONTEND editProfile] updateProfileForm', currentUserName, gameId);
+    const response = await fetch(`${window.APP_CONFIG.apiBase}/profiles/${encodeURIComponent(currentUserName || '')}?game_id=${encodeURIComponent(gameId)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    console.log('[FRONTEND editProfile] updateProfileForm status', response.status);
+    if (!response.ok) throw new Error('Unable to load your profile. Please refresh and try again.');
+    const data = await response.json();
 
-  console.log('[FRONTEND editProfile] updateProfileForm data', data);
-  const field = document.getElementById('researcher_name');
-  if (field) field.value = data.profile && data.profile.researcher_name;
-  const field2 = document.getElementById('researcher_bio');
-  if (field2) field2.value = data.profile && data.profile.researcher_bio;
-  const field3 = document.getElementById('user_name');
-  if (field3) field3.value = data.profile && data.profile.user_name;
+    if (!data.profile || !Object.hasOwn(data.profile, 'email')) {
+      throw new Error('Unable to load your private profile. Please sign in and try again.');
+    }
+    document.getElementById('researcher_name').value = data.profile.researcher_name || '';
+    document.getElementById('researcher_bio').value = data.profile.researcher_bio || '';
+    document.getElementById('user_name').value = data.profile.user_name || '';
+    document.getElementById('email').value = data.profile.email;
+    document.getElementById('notify_word_created').checked = data.profile.notify_word_created === true;
+    document.getElementById('notify_round_complete').checked = data.profile.notify_round_complete === true;
+    button.disabled = false;
+  } catch (err) {
+    console.error('[FRONTEND editProfile] unable to load profile', err);
+    setMessage(err.message || 'Unable to load your profile.');
+  }
 }
 
 initGlobalLoader();

@@ -36,7 +36,11 @@ async function submitAuth(formId, endpoint) {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
-    console.log('[FRONTEND auth] submitAuth', endpoint, data);
+    if (formId === 'signupForm') {
+      data.notify_word_created = form.elements.notify_word_created.checked;
+      data.notify_round_complete = form.elements.notify_round_complete.checked;
+    }
+    console.log('[FRONTEND auth] submitAuth', endpoint);
     try {
       const response = await fetch(`${window.APP_CONFIG.apiBase}/${endpoint}`, {
         method: 'POST',
@@ -56,6 +60,15 @@ async function submitAuth(formId, endpoint) {
       }
       console.log('[FRONTEND auth] received token, storing and redirecting');
       localStorage.setItem('lexicon-token', result.token);
+      if (result.warning) {
+        form.hidden = true;
+        setMessage(result.warning);
+        const link = document.createElement('a');
+        link.href = '/index.html' + (gameId ? `?game_id=${encodeURIComponent(gameId)}` : '');
+        link.textContent = ' Continue to the game';
+        document.getElementById('message').appendChild(link);
+        return;
+      }
       redirectHome();
     } catch (err) {
       console.error('[FRONTEND auth] submitAuth exception', err);

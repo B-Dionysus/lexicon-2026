@@ -53,7 +53,7 @@ test('word cards link truncated definitions to the full word in the current game
 
   const shorter = createWordCard({ ...word, definition: 'short definition' });
   assert.ok(shorter.includes('<p class="definition">short definition</p>'));
-  assert.ok(!shorteraws configure sso --use-device-codeaws configure sso --use-device-code.includes('>more</a>)'));
+  assert.ok(!shorter.includes('>more</a>)'));
 
   const multiline = createWordCard({ ...word, definition: 'First line\n\nmore on the next line' });
   assert.ok(multiline.includes('<p class="definition">First line\n\n<a href="/defined-word.html?word_id=word-2&game_id=game+one">more</a> on the next line</p>'));
