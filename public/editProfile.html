@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Edit Profile</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=message-20261116" />
     <link rel="stylesheet" href="/styles/buttons.css" />
   </head>
   <body>
@@ -18,10 +18,14 @@
       <form id="editProfileForm">
         <label>Researcher Name<input name="researcher_name" id="researcher_name" required /></label>
         <label>Researcher Bio<textarea name="researcher_bio" id="researcher_bio" required></textarea></label>
-        <label>Email (optional)<input name="email" id="email" type="email" autocomplete="email" maxlength="254" /></label>
-        <p>Your email address is private. Adding or changing it or these preferences sends a welcome email.</p>
-        <label class="notification-option"><input name="notify_word_created" id="notify_word_created" type="checkbox" /> Email me when a player creates a word</label>
-        <label class="notification-option"><input name="notify_round_complete" id="notify_round_complete" type="checkbox" /> Email me when all players have completed their word</label>
+        <div class="email-settings">
+          <div class="email-preferences">
+            <p>Your email address is private. Adding or changing it or these preferences sends a welcome email.</p>
+            <label class="notification-option"><input name="notify_word_created" id="notify_word_created" type="checkbox" /><span>Email me when a player creates a word</span></label>
+            <label class="notification-option"><input name="notify_round_complete" id="notify_round_complete" type="checkbox" /><span>Email me when all players have completed their word</span></label>
+          </div>
+          <label class="email-address">Email (optional)<input name="email" id="email" type="email" autocomplete="email" maxlength="254" /></label>
+        </div>
         <hr />
         <label>User Name<input name="user_name" id="user_name" readonly /></label>
         Leave Password blank to keep the current password.

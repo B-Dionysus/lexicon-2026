@@ -177,17 +177,46 @@ label {
   letter-spacing: 0.05em;
 }
 
+.email-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.email-preferences {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.email-preferences p {
+  margin: 0;
+}
+
+.email-address input {
+  min-width: 0;
+}
+
 .notification-option {
   flex-direction: row;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.6rem;
   text-transform: none;
   letter-spacing: normal;
 }
 
 .notification-option input {
-  margin: 0;
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  margin: 0.18rem 0 0;
   padding: 0;
+}
+
+@media (max-width: 650px) {
+  .email-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 input, textarea { 
@@ -231,6 +260,10 @@ input.invalid, textarea.invalid {
   background: #fff5f4;
   font-size: 1.1rem;
   line-height: 1.45;
+}
+
+#message:empty {
+  display: none;
 }
 
 .small { 

@@ -4,6 +4,7 @@ const {
   GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
   BatchGetCommand,
   UpdateCommand,
   TransactWriteCommand
@@ -20,7 +21,7 @@ const {
   error
 } = require('./lib/utils');
 const { createDataAccess } = require('./lib/dataAccess');
-const { normalizeEmail, getEmailPreferences, sendWelcome, welcomeEmail } = require('./lib/email');
+const { normalizeEmail, getEmailPreferences, sendWelcome, welcomeEmail, roundEmail } = require('./lib/email');
 
 function createDynamoDbAdapter(documentClient) {
   return {
@@ -42,6 +43,11 @@ function createDynamoDbAdapter(documentClient) {
     query(params) {
       return {
         promise: async () => documentClient.send(new QueryCommand(params))
+      };
+    },
+    scan(params) {
+      return {
+        promise: async () => documentClient.send(new ScanCommand(params))
       };
     },
     update(params) {
@@ -156,6 +162,9 @@ async function updateWord(wordId, updates) {
 async function handleSignup(event) {
   const body = extractBody(event);
   const { user_name, password, researcher_name, researcher_bio, repeat_password } = body;
+  const gameId = typeof body.game_id === 'string' ? normalizeGameId(body.game_id) : 'default';
+  if (gameId === 'default') return error('Please visit your game URL again before creating a profile; the Example Game does not accept signups.', 400);
+  if (!await getGame(gameId)) return error('Game not found. Please visit your game URL again before creating a profile.', 400);
   const email = normalizeEmail(body.email);
   if (email === null) return error('Please enter a valid email address', 400);
   const preferences = getEmailPreferences(body);
@@ -173,6 +182,7 @@ async function handleSignup(event) {
     user_name,
     researcher_name,
     researcher_bio,
+    game_id: gameId,
     email: email || '',
     ...preferences,
     password_hash: passwordHash,
@@ -386,9 +396,44 @@ async function handleGetProfile(event) {
   const authoredWords = await dataAccess.listWordsByUserNameAndGame(userName, gameId);
   const user = getCurrentUser(event);
   const ownEmail = user && user.user_name === profile.user_name ? { email: profile.email || '', ...getEmailPreferences({}, profile) } : {};
-  const response = success({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at, ...ownEmail }, words: authoredWords });
+  const isOwnAdmin = user && user.user_name === profile.user_name && profile.admin === true;
+  const game = isOwnAdmin ? await getGame(gameId) : null;
+  const admin = isOwnAdmin ? { game: game ? { game_id: game.game_id, name: game.name || game.game_id, current_letter: game.current_letter || 'A', completed: game.completed === true } : null } : undefined;
+  const response = success({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at, ...ownEmail }, words: authoredWords, ...(admin && { admin }) });
   response.headers['Cache-Control'] = 'no-store';
   return response;
+}
+
+async function handleEndRound(event) {
+  const user = getCurrentUser(event);
+  if (!user) return error('Authentication required', 401);
+  const profile = await getProfile(user.user_name);
+  if (!profile || profile.admin !== true) return error('Forbidden', 403);
+  const body = extractBody(event);
+  if (typeof body.game_id !== 'string' || !body.game_id.trim() ||
+      typeof body.current_letter !== 'string' || !/^[A-Z]$/.test(body.current_letter)) {
+    return error('A game and current round are required', 400);
+  }
+  const gameId = body.game_id.trim();
+  const game = await getGame(gameId);
+  if (!game) return error('Game not found', 404);
+  const letter = game.current_letter || 'A';
+  if (!/^[A-Z]$/.test(letter)) throw new Error('Invalid current round in game');
+  if (game.completed || letter !== body.current_letter) return error('The round has changed or the game is complete. Refresh the profile.', 409);
+  const recipients = await dataAccess.listRoundRecipients(gameId);
+  let state;
+  try {
+    state = await dataAccess.advanceRound(gameId, letter);
+  } catch (err) {
+    if (err.name === 'ConditionalCheckFailedException') return error('The round has changed or the game is complete. Refresh the profile.', 409);
+    throw err;
+  }
+  const results = await Promise.allSettled(recipients.map(({ email }) =>
+    roundEmail.send(email, game.name || gameId, letter, state.completed ? null : state.current_letter)));
+  const failed = results.flatMap((result, index) => result.status === 'rejected' ? [recipients[index].user_name] : []);
+  if (failed.length) console.error('[EMAIL] Round emails failed:', failed.length, 'of', recipients.length);
+  return success({ game: { game_id: gameId, name: game.name || gameId, ...state },
+    ...(failed.length && { warning: `Round ${letter} ended, but emails could not be sent to: ${failed.join(', ')}. Please notify them separately.` }) });
 }
 
 async function handleInvalidateCache(event) {
@@ -481,6 +526,9 @@ async function route(event) {
   if (method === 'POST' && path === '/login') {
     return handleLogin(event);
   }
+  if (method === 'POST' && path === '/admin/round') {
+    return handleEndRound(event);
+  }
   if (method === 'POST' && path === '/cache/invalidate') {
     return handleInvalidateCache(event);
   }
@@ -512,11 +560,13 @@ exports.handleUpdateWord = handleUpdateWord;
 exports.handleGetProfile = handleGetProfile;
 exports.handleGetGame = handleGetGame;
 exports.handleUpdateProfile = handleUpdateProfile;
+exports.handleEndRound = handleEndRound;
 exports.handleInvalidateCache = handleInvalidateCache;
 exports.__test__ = {
   dataAccess,
   dynamodb,
   welcomeEmail,
+  roundEmail,
   clearWordListCache,
   invalidateWordListCache,
   wordListCache

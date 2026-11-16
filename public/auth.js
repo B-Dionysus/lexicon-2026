@@ -4,6 +4,8 @@ console.log('[FRONTEND auth] auth.js loaded');
 // Read the current game id from the URL so we can keep the user in the same game.
 const params = new URLSearchParams(window.location.search);
 const gameId = params.get('game_id') || 'default';
+const signupLink = document.getElementById('signupLink');
+if (signupLink) signupLink.href = `/signup.html?game_id=${encodeURIComponent(gameId)}`;
 
 // Send the user back to the main page after a successful login or signup.
 function redirectHome() {

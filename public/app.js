@@ -51,7 +51,7 @@ function createWordCard(word) {
 
   // Word is defined
   const authorName = word.researcher_name || word.user_name || 'Unknown';
-  const authorUrl = buildHref('/profile.html?user_name=' + encodeURIComponent(word.user_name));
+  const authorUrl = buildHref('/profile.html?user_name=' + encodeURIComponent(word.user_name), state.gameId);
   const wordUrl = buildHref('/defined-word.html?word_id=' + word.word_id, state.gameId);
   
   // Notice this perfectly matches the hash format { "word": "id" } we optimized earlier

@@ -31,20 +31,42 @@ test('welcome email uses the configured SES sender and recipient', async (t) => 
   assert.equal(command.input.Source, 'sender@example.com');
   assert.deepEqual(command.input.Destination.ToAddresses, ['player@example.com']);
   assert.match(command.input.Message.Subject.Data, /Welcome/);
-  assert.match(command.input.Message.Body.Text.Data, /player creates a word: On/);
-  assert.match(command.input.Message.Body.Text.Data, /all players complete their word: Off/);
+  assert.match(command.input.Message.Body.Text.Data, /We will email you every time a player submits a new word\./);
+});
+
+test('welcome email describes each combination of notification preferences', async (t) => {
+  const previous = process.env.EMAIL_FROM;
+  process.env.EMAIL_FROM = 'sender@example.com';
+  t.after(() => {
+    if (previous === undefined) delete process.env.EMAIL_FROM;
+    else process.env.EMAIL_FROM = previous;
+  });
+  const send = t.mock.method(SESClient.prototype, 'send', async () => ({}));
+  const cases = [
+    [true, true, 'We will email you whenever a player submits a new word, and also when the round is over and everyone has submitted a word.'],
+    [true, false, 'We will email you every time a player submits a new word.'],
+    [false, true, 'We will email you only once the round is over, and every player has finished submitting a new word.'],
+    [false, false, 'We have your email address now, but this will be the only email you get. If you want to update your preferences (e.g., to get an email every time the round ends) you can do so by editting your profile.']
+  ];
+  for (const [notify_word_created, notify_round_complete, message] of cases) {
+    await welcomeEmail.send('player@example.com', { notify_word_created, notify_round_complete });
+    const body = send.mock.calls.at(-1).arguments[0].input.Message.Body.Text.Data;
+    assert.equal(body, `Welcome to Lexicon 2026!\n\nThanks for joining our collaborative dictionary game. We look forward to seeing what you create.\n\n${message}\n\nThe Lexicon team`);
+  }
 });
 
 test('signup saves an optional email and sends a welcome email', async (t) => {
   t.mock.method(access, 'getProfile', async () => null);
+  t.mock.method(access, 'getGame', async () => ({ game_id: 'game' }));
   let saved;
   t.mock.method(handler.__test__.dynamodb, 'put', (params) => ({ promise: async () => { saved = params.Item; } }));
   const send = t.mock.method(handler.__test__.welcomeEmail, 'send', async () => {});
-  const body = { user_name: 'researcher', password: 'password123', repeat_password: 'password123', researcher_name: 'Ada', researcher_bio: 'Bio', email: ' player@example.com ', notify_word_created: true, notify_round_complete: false };
+  const body = { user_name: 'researcher', game_id: 'game', password: 'password123', repeat_password: 'password123', researcher_name: 'Ada', researcher_bio: 'Bio', email: ' player@example.com ', notify_word_created: true, notify_round_complete: false };
 
   const response = await handler.handleSignup({ body: JSON.stringify(body) });
   assert.equal(response.statusCode, 200);
   assert.equal(saved.email, 'player@example.com');
+  assert.equal(saved.game_id, 'game');
   assert.equal(send.mock.calls.length, 1);
   assert.equal(send.mock.calls[0].arguments[0], saved.email);
   assert.deepEqual(send.mock.calls[0].arguments[1], { notify_word_created: true, notify_round_complete: false });
@@ -159,7 +181,7 @@ test('mock API supports private email signup and profile edits without sending m
   const signup = await fetch(`${base}/signup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_name: 'local-user', password: 'password123', repeat_password: 'password123', researcher_name: 'Ada', researcher_bio: 'Bio', email: 'old@example.com' })
+    body: JSON.stringify({ user_name: 'local-user', game_id: 'local', password: 'password123', repeat_password: 'password123', researcher_name: 'Ada', researcher_bio: 'Bio', email: 'old@example.com' })
   });
   const signedUp = await signup.json();
   assert.equal(signup.status, 200);

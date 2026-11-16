@@ -13,8 +13,9 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     const result = await dynamodb.get({
       TableName: tables.profiles,
       Key: { user_name: userName },
-      ProjectionExpression: 'user_name,researcher_name,researcher_bio,#email,notify_word_created,notify_round_complete,password_hash,created_at,updated_at',
-      ExpressionAttributeNames: { '#email': 'email' }
+      ProjectionExpression: 'user_name,researcher_name,researcher_bio,#email,notify_word_created,notify_round_complete,password_hash,created_at,updated_at,game_id,#admin',
+      ExpressionAttributeNames: { '#email': 'email', '#admin': 'admin' },
+      ConsistentRead: true
     }).promise();
     return result.Item || null;
   }
@@ -154,9 +155,44 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     const result = await dynamodb.get({
       TableName: tables.games,
       Key: { game_id: gameId },
-      ProjectionExpression: 'game_id,subtitle'
+      ConsistentRead: true,
+      ProjectionExpression: 'game_id,subtitle,#name,current_letter,completed',
+      ExpressionAttributeNames: { '#name': 'name' }
     }).promise();
     return result.Item || null;
+  }
+
+  async function listRoundRecipients(gameId) {
+    const recipients = [];
+    let lastKey;
+    do {
+      const result = await dynamodb.scan({
+        TableName: tables.profiles,
+        FilterExpression: 'game_id = :gameId AND notify_round_complete = :enabled AND attribute_exists(#email)',
+        ExpressionAttributeValues: { ':gameId': gameId, ':enabled': true },
+        ExpressionAttributeNames: { '#email': 'email' },
+        ProjectionExpression: 'user_name,#email',
+        ConsistentRead: true,
+        ...(lastKey && { ExclusiveStartKey: lastKey })
+      }).promise();
+      recipients.push(...(result.Items || []).filter((profile) => profile.email));
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+    return recipients;
+  }
+
+  async function advanceRound(gameId, letter) {
+    const finalRound = letter === 'Z';
+    const nextLetter = finalRound ? letter : String.fromCharCode(letter.charCodeAt(0) + 1);
+    await dynamodb.update({
+      TableName: tables.games,
+      Key: { game_id: gameId },
+      UpdateExpression: 'SET current_letter = :next, completed = :completed',
+      ConditionExpression: 'attribute_exists(game_id) AND (attribute_not_exists(completed) OR completed = :false) AND ' +
+        (letter === 'A' ? '(attribute_not_exists(current_letter) OR current_letter = :letter)' : 'current_letter = :letter'),
+      ExpressionAttributeValues: { ':letter': letter, ':next': nextLetter, ':completed': finalRound, ':false': false }
+    }).promise();
+    return { current_letter: nextLetter, completed: finalRound };
   }
 
   async function createWordWithRelated(item, relatedItems = [], nameClaims = []) {
@@ -220,6 +256,8 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     listWordsByUserNameAndGame,
     getWord,
     getGame,
+    listRoundRecipients,
+    advanceRound,
     createWordWithRelated,
     updateWord,
     updateProfile

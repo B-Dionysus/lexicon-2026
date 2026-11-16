@@ -9,17 +9,27 @@ This repository contains a lightweight Lexicon 2026 implementation with:
 
 ## To do!
 - Support richer markup in definitions.
-- Some way to signal "Everyone has finished, time for the next letter!"
-- Email notifications when a player posts or a round is complete.
+- Email notifications when a player posts a word.
 
 Definitions preserve line breaks entered in the editor on both the main page and the full definition page.
 
 Profiles can optionally include a private email address. A welcome email is sent
 when the address or notification preferences are added or changed; it summarizes
-the preferences. Word and round notifications are not yet implemented. Addresses
+the preferences. Word notifications are not yet implemented. Addresses
 are not verified. If SES rejects
 the send, the profile is saved and the player is warned. Local mock API saves
 addresses but does not send mail.
+
+New profiles must be created from an existing, non-default game URL. The profile
+is associated with that game; visiting the example game does not permit signup.
+For local development, use `http://localhost:3000/?game_id=local`.
+
+An admin viewing their own profile can end the current game's round manually.
+Games start at A and finish after Z. Round emails go to profiles associated
+with that game that have an address and opted in to round notifications. The
+admin must decide when everyone has submitted; completion is not checked
+automatically. Email failures are reported after the round advances and require
+manual follow-up. Local mock API does not send round emails.
 
 SES must have `lexicon@benjamindionys.us` (or its domain) verified as a sender
 in the deployment region. While SES is in the sandbox, recipients must also be
@@ -27,8 +37,25 @@ verified; request production access to send to unverified recipients. The Lambda
 role is restricted to sending from this address. An accepted send is not a
 guarantee of delivery.
 
-## Invalidate Page Cache
-- invalidateWordListCache()
+## Word list cache
+
+The Lambda keeps each game's word list in memory to avoid querying the words
+table on every request. Each request checks a shared DynamoDB invalidation
+signal; if it has changed, that Lambda instance reloads the list. Researcher
+names are fetched separately, so they are not stored in the word list cache.
+
+Creating or editing a word through the API invalidates its game's cache
+automatically. If words are changed directly in DynamoDB, or the main page
+shows a stale list after a failed update, invalidate the cache manually:
+
+1. Sign in and open the affected game's main page.
+2. Open the browser developer console and run `await invalidateWordListCache()`.
+3. Refresh the page to request the list again.
+
+This signals all Lambda instances to reload that game's list on their next
+request; it does not clear the browser cache. The local mock API does not use
+this Lambda cache or provide the invalidation endpoint.
+
 ## Run locally
 
 ```bash

@@ -482,14 +482,17 @@ test('handleCreateWord preserves line breaks when editing an existing word', asy
 
 test('handleSignup creates a new profile and returns a token', async () => {
   const originalGetProfile = handlerModule.__test__.dataAccess.getProfile;
+  const originalGetGame = handlerModule.__test__.dataAccess.getGame;
   const originalPut = handlerModule.__test__.dynamodb.put;
 
   handlerModule.__test__.dataAccess.getProfile = async () => null;
+  handlerModule.__test__.dataAccess.getGame = async () => ({ game_id: 'game' });
   handlerModule.__test__.dynamodb.put = (params) => ({ promise: async () => ({}) });
 
   const response = await handlerModule.handleSignup({
     body: JSON.stringify({
       user_name: 'researcher',
+      game_id: 'game',
       password: 'password123',
       repeat_password: 'password123',
       researcher_name: 'Ada',
@@ -498,6 +501,7 @@ test('handleSignup creates a new profile and returns a token', async () => {
   });
 
   handlerModule.__test__.dataAccess.getProfile = originalGetProfile;
+  handlerModule.__test__.dataAccess.getGame = originalGetGame;
   handlerModule.__test__.dynamodb.put = originalPut;
 
   assert.equal(response.statusCode, 200);

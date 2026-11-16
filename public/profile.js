@@ -39,15 +39,67 @@ async function loadProfile() {
       <h2>Defined Words</h2>
       <ul>${(data.words || []).map((word) => `<li><a href="/defined-word.html?word_id=${word.word_id}${gameId ? '&game_id=' + encodeURIComponent(gameId) : ''}">${word.word}</a></li>`).join('')}</ul>
     `;
+    if (data.admin) renderAdmin(content, data.admin.game);
     document.getElementById('loadingModal').classList.add('hidden');
     console.log('[FRONTEND profile] rendered profile', profile.user_name);
   } catch (err) {
     console.error('[FRONTEND profile] loadProfile exception', err);
   }
+
+  function renderAdmin(content, game) {
+    const section = document.createElement('section');
+    const heading = document.createElement('h2');
+    heading.textContent = 'Admin';
+    section.appendChild(heading);
+    const details = document.createElement('p');
+    section.appendChild(details);
+    const message = document.createElement('p');
+    message.setAttribute('role', 'status');
+    section.appendChild(message);
+    if (!game) {
+      details.textContent = 'Game not found. Visit a valid game URL to manage its rounds.';
+    } else {
+      details.textContent = `${game.name} — ${game.completed ? 'Game complete' : `Round ${game.current_letter}`}`;
+      if (!game.completed) {
+        const button = document.createElement('button');
+        button.className = 'btn';
+        button.textContent = 'End Current Round';
+        section.appendChild(button);
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          message.textContent = 'Ending round…';
+          try {
+            const response = await fetch(`${window.APP_CONFIG.apiBase}/admin/round`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ game_id: game.game_id, current_letter: game.current_letter })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+              message.textContent = result.error || 'Unable to end the round. Refresh this page before trying again.';
+              return;
+            }
+            game = result.game;
+            details.textContent = `${game.name} — ${game.completed ? 'Game complete' : `Round ${game.current_letter}`}`;
+            message.textContent = result.warning || 'Round ended.';
+            button.disabled = game.completed;
+            if (game.completed) button.hidden = true;
+          } catch (err) {
+            console.error('[FRONTEND profile] end round failed', err);
+            message.textContent = 'Unable to confirm whether the round ended. Refresh this page before trying again.';
+          }
+        });
+      }
+    }
+    content.appendChild(section);
+  }
 }
 initGlobalLoader();
 // Update the top-right button so it shows or hides the Edit Profile button depending on auth state.
 function updateButtons() {
+  document.getElementById('homeButton').onclick = () => {
+    window.location.href = buildHref('/index.html', gameId);
+  };
   const profileButton = document.getElementById('editProfileButton');
   const currentUserName = getCurrentUserNameFromToken(token);
   const isLoggedIn = Boolean(currentUserName == profileName);

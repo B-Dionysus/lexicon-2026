@@ -73,3 +73,43 @@ test('profile editor loads and submits both notification preferences', async (t)
   assert.equal(submitted.notify_word_created, false);
   assert.equal(submitted.notify_round_complete, true);
 });
+
+test('admin profile control advances the displayed game and reports email failures', async () => {
+  let source = await readFile(path.join(__dirname, '../public/profile.js'), 'utf8');
+  source = source.replace(/^import .*;\n/gm, '');
+  const createElement = (tag) => ({
+    tag, children: [], appendChild(child) { this.children.push(child); },
+    setAttribute() {}, addEventListener(_type, listener) { this.click = listener; }
+  });
+  const content = createElement('div');
+  content.style = { setProperty() {} };
+  const nodes = {
+    homeButton: {}, editProfileButton: { style: {} }, logOutButton: { style: {} },
+    profileContent: content, loadingModal: { classList: { add() {}, remove() {} } }
+  };
+  const context = {
+    window: { location: { search: '?game_id=game&user_name=admin' }, APP_CONFIG: { apiBase: '/api' }, addEventListener() {} },
+    document: { createElement, getElementById: (id) => nodes[id] },
+    localStorage: { getItem: () => 'token' },
+    getCurrentUserNameFromToken: () => 'admin', buildHref: (path) => path,
+    initGlobalLoader() {}, URLSearchParams, console
+  };
+  let request;
+  context.fetch = async (url, options) => {
+    if (!options.method) return { ok: true, json: async () => ({ profile: { user_name: 'admin' }, words: [], admin: { game: { game_id: 'game', name: 'Example', current_letter: 'A', completed: false } } }) };
+    request = { url, ...options };
+    return { ok: true, json: async () => ({ game: { game_id: 'game', name: 'Example', current_letter: 'B', completed: false }, warning: 'Email failed' }) };
+  };
+  vm.runInNewContext(`${source}\nthis.loadProfile = loadProfile;`, context);
+  await context.loadProfile();
+  const section = content.children[0];
+  assert.equal(section.children[1].textContent, 'Example — Round A');
+  const button = section.children[3];
+  await button.click();
+  assert.equal(request.url, '/api/admin/round');
+  assert.equal(request.headers.Authorization, 'Bearer token');
+  assert.deepEqual(JSON.parse(request.body), { game_id: 'game', current_letter: 'A' });
+  assert.equal(section.children[1].textContent, 'Example — Round B');
+  assert.equal(section.children[2].textContent, 'Email failed');
+  assert.equal(button.disabled, false);
+});

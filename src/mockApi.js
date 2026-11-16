@@ -19,6 +19,12 @@ debugLog('mockApi starting');
 
 const words = [];
 const profiles = [];
+const games = [
+  { game_id: 'default', name: 'Example Game' },
+  { game_id: 'local', name: 'Local Game' }
+];
+app.locals.profiles = profiles;
+app.locals.games = games;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 
 function clone(value) {
@@ -42,6 +48,12 @@ function authMiddleware(req, res, next) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 }
+
+app.get('/api/game', (req, res) => {
+  const gameId = normalizeGameId(req.query.game_id);
+  const game = games.find((entry) => entry.game_id === gameId);
+  res.json({ game: { game_id: gameId, subtitle: game?.subtitle || '' } });
+});
 
 app.get('/api/words', (req, res) => {
   // Return list of words for a game
@@ -93,6 +105,9 @@ app.post('/api/words', authMiddleware, (req, res) => {
 app.post('/api/signup', (req, res) => {
   debugLog('POST /api/signup body keys', Object.keys(req.body || {}));
   const { user_name, password, researcher_name, researcher_bio, repeat_password } = req.body || {};
+  const gameId = typeof req.body.game_id === 'string' ? normalizeGameId(req.body.game_id) : 'default';
+  if (gameId === 'default') return res.status(400).json({ error: 'Please visit your game URL again before creating a profile; the Example Game does not accept signups.' });
+  if (!games.some((game) => game.game_id === gameId)) return res.status(400).json({ error: 'Game not found. Please visit your game URL again before creating a profile.' });
   const email = normalizeEmail(req.body.email);
   if (email === null) return res.status(400).json({ error: 'Please enter a valid email address' });
   const preferences = getEmailPreferences(req.body);
@@ -106,7 +121,7 @@ app.post('/api/signup', (req, res) => {
   if (profiles.some((profile) => profile.user_name === user_name)) return res.status(409).json({ error: 'User already exists' });
   const passwordHash = bcrypt.hashSync(password, 12);
   const now = new Date().toISOString();
-  const profile = { user_name, researcher_name, researcher_bio, email: email || '', ...preferences, password_hash: passwordHash, created_at: now, updated_at: now };
+  const profile = { user_name, researcher_name, researcher_bio, game_id: gameId, email: email || '', ...preferences, password_hash: passwordHash, created_at: now, updated_at: now };
   profiles.push(profile);
   const token = jwt.sign({ user_name }, JWT_SECRET, { expiresIn: '7d' });
   debugLog('POST /api/signup created', user_name);
@@ -142,8 +157,29 @@ app.get('/api/profiles/:user_name', (req, res) => {
     try { user = jwt.verify(token[1], JWT_SECRET); } catch (err) { debugLog('GET profile: invalid token', err.name); }
   }
   const ownEmail = user && user.user_name === profile.user_name ? { email: profile.email || '', ...getEmailPreferences({}, profile) } : {};
+  const isOwnAdmin = user && user.user_name === profile.user_name && profile.admin === true;
+  const game = isOwnAdmin ? games.find((entry) => entry.game_id === gameId) : null;
+  const admin = isOwnAdmin ? { game: game ? { game_id: game.game_id, name: game.name || game.game_id, current_letter: game.current_letter || 'A', completed: game.completed === true } : null } : undefined;
   res.set('Cache-Control', 'no-store');
-  res.json({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at, ...ownEmail }, words: authoredWords });
+  res.json({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at, ...ownEmail }, words: authoredWords, ...(admin && { admin }) });
+});
+
+app.post('/api/admin/round', authMiddleware, (req, res) => {
+  const profile = profiles.find((entry) => entry.user_name === req.user.user_name);
+  if (!profile || profile.admin !== true) return res.status(403).json({ error: 'Forbidden' });
+  const { game_id, current_letter } = req.body;
+  if (typeof game_id !== 'string' || !game_id.trim() || typeof current_letter !== 'string' || !/^[A-Z]$/.test(current_letter)) {
+    return res.status(400).json({ error: 'A game and current round are required' });
+  }
+  const game = games.find((entry) => entry.game_id === game_id.trim());
+  if (!game) return res.status(404).json({ error: 'Game not found' });
+  const letter = game.current_letter || 'A';
+  if (game.completed || letter !== current_letter) return res.status(409).json({ error: 'The round has changed or the game is complete. Refresh the profile.' });
+  game.completed = letter === 'Z';
+  game.current_letter = game.completed ? letter : String.fromCharCode(letter.charCodeAt(0) + 1);
+  const recipients = profiles.filter((entry) => entry.game_id === game.game_id && entry.email && entry.notify_round_complete === true);
+  res.json({ game: { game_id: game.game_id, name: game.name || game.game_id, current_letter: game.current_letter, completed: game.completed },
+    ...(recipients.length && { warning: 'The round ended, but the local mock API does not send round emails.' }) });
 });
 
 app.post('/api/profiles/', authMiddleware, updateProfile);
