@@ -289,6 +289,7 @@ test('handleCreateWord writes the main word and related words transactionally', 
   const originalCreateWordWithRelated = originalDataAccess.createWordWithRelated;
   const originalTouchCacheSignal = originalDataAccess.touchCacheSignal;
   const originalListWordsByName = originalDataAccess.listWordsByName;
+  const originalListWordRecipients = originalDataAccess.listWordRecipients;
 
   let createCalled = false;
   let capturedArgs;
@@ -300,6 +301,7 @@ test('handleCreateWord writes the main word and related words transactionally', 
   };
   originalDataAccess.touchCacheSignal = async () => '2026-01-01T00:00:00.000Z';
   originalDataAccess.listWordsByName = async () => [];
+  originalDataAccess.listWordRecipients = async () => [];
 
   handlerModule.__test__.clearWordListCache();
   handlerModule.__test__.wordListCache.set('default', { words: [], cachedAt: new Date().toISOString() });
@@ -319,6 +321,7 @@ test('handleCreateWord writes the main word and related words transactionally', 
   handlerModule.__test__.dataAccess.createWordWithRelated = originalCreateWordWithRelated;
   handlerModule.__test__.dataAccess.touchCacheSignal = originalTouchCacheSignal;
   handlerModule.__test__.dataAccess.listWordsByName = originalListWordsByName;
+  handlerModule.__test__.dataAccess.listWordRecipients = originalListWordRecipients;
 
   assert.equal(createCalled, true);
   assert.equal(handlerModule.__test__.wordListCache.has('default'), false);
@@ -426,8 +429,8 @@ test('handleUpdateWord invalidates the cached word list when a word changes', as
   const originalUpdateWord = handlerModule.__test__.dataAccess.updateWord;
   const originalTouchCacheSignal = handlerModule.__test__.dataAccess.touchCacheSignal;
 
-  handlerModule.__test__.dataAccess.getWord = async () => ({ word_id: 'word-1', user_name: 'researcher', game_id: 'default' });
-  handlerModule.__test__.dataAccess.updateWord = async (wordId, updates) => ({ word_id: wordId, ...updates });
+  handlerModule.__test__.dataAccess.getWord = async () => ({ word_id: 'word-1', user_name: 'researcher', game_id: 'default', definition: 'Original' });
+  handlerModule.__test__.dataAccess.updateWord = async (wordId, updates) => ({ word_id: wordId, game_id: 'default', ...updates });
   handlerModule.__test__.dataAccess.touchCacheSignal = async () => '2026-01-01T00:00:00.000Z';
 
   handlerModule.__test__.clearWordListCache();
@@ -460,11 +463,11 @@ test('handleCreateWord preserves line breaks when editing an existing word', asy
     dataAccess.touchCacheSignal = originalTouchCacheSignal;
   });
 
-  dataAccess.getWord = async () => ({ word_id: 'word-1', user_name: 'researcher', game_id: 'default' });
+  dataAccess.getWord = async () => ({ word_id: 'word-1', user_name: 'researcher', game_id: 'default', definition: 'Original' });
   let savedDefinition;
   dataAccess.updateWord = async (wordId, updates) => {
     savedDefinition = updates.definition;
-    return { word_id: wordId, ...updates };
+    return { word_id: wordId, game_id: 'default', ...updates };
   };
   dataAccess.touchCacheSignal = async () => '2026-01-01T00:00:00.000Z';
 
@@ -587,7 +590,7 @@ test('handleUpdateWord updates a word if the user is authorized', async () => {
   const originalGetWord = handlerModule.__test__.dataAccess.getWord;
   const originalUpdateWord = handlerModule.__test__.dataAccess.updateWord;
 
-  handlerModule.__test__.dataAccess.getWord = async () => ({ word_id: 'word-1', user_name: 'researcher' });
+  handlerModule.__test__.dataAccess.getWord = async () => ({ word_id: 'word-1', user_name: 'researcher', definition: 'Original' });
   handlerModule.__test__.dataAccess.updateWord = async (wordId, updates) => ({ word_id: wordId, ...updates });
 
   const token = 'Bearer ' + jwt.sign({ user_name: 'researcher' }, process.env.JWT_SECRET || 'dev-secret');

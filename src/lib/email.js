@@ -30,17 +30,54 @@ const welcomeEmail = {
 };
 
 const roundEmail = {
-  async send(address, gameName, letter, nextLetter) {
+  async send(address, gameName, letter, nextLetter, gameId) {
     if (!process.env.EMAIL_FROM) throw new Error('EMAIL_FROM is not configured');
-    const announcement = nextLetter
-      ? `Round ${letter} is over, and the new round will start with letter ${nextLetter}.\n\nPlease remember to define previously undefined words first before making a new word for this letter.`
-      : `Round ${letter} is over, and ${gameName} is complete.`;
+    let subject = `${gameName}: Round ${letter} is over`;
+    let text = `Round ${letter} is over, and ${gameName} is complete.\n\nThe Lexicon team`;
+    let html;
+    if (nextLetter) {
+      if (!process.env.SITE_URL) throw new Error('SITE_URL is not configured');
+      const gameUrl = new URL('/index.html', process.env.SITE_URL);
+      gameUrl.searchParams.set('game_id', gameId);
+      subject = '[Lexicon] Time for a new letter';
+      text = `Good news! We are moving on to the ${nextLetter} words! Click here (${gameUrl}) to add a new ${nextLetter} word! Please remember to defined previously-existing but undefined ${nextLetter} words before creating a brand new entry.`;
+      html = `Good news! We are moving on to the ${escapeHtml(nextLetter)} words! <a href="${escapeHtml(gameUrl)}">Click here</a> to add a new ${escapeHtml(nextLetter)} word! Please remember to defined previously-existing but undefined ${escapeHtml(nextLetter)} words before creating a brand new entry.`;
+    }
     await client.send(new SendEmailCommand({
       Source: process.env.EMAIL_FROM,
       Destination: { ToAddresses: [address] },
       Message: {
-        Subject: { Data: `${gameName}: Round ${letter} is over` },
-        Body: { Text: { Data: `${announcement}\n\nThe Lexicon team` } }
+        Subject: { Data: subject, Charset: 'UTF-8' },
+        Body: { Text: { Data: text, Charset: 'UTF-8' }, ...(html && { Html: { Data: html, Charset: 'UTF-8' } }) }
+      }
+    }));
+  }
+};
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[char]);
+}
+
+const wordEmail = {
+  async send(address, gameName, researcherName, word) {
+    if (!process.env.EMAIL_FROM) throw new Error('EMAIL_FROM is not configured');
+    if (!process.env.SITE_URL) throw new Error('SITE_URL is not configured');
+    const wordUrl = new URL('/defined-word.html', process.env.SITE_URL);
+    wordUrl.searchParams.set('word_id', word.word_id);
+    wordUrl.searchParams.set('game_id', word.game_id);
+    const profileUrl = new URL('/profile.html', process.env.SITE_URL);
+    profileUrl.searchParams.set('user_name', word.user_name);
+    profileUrl.searchParams.set('game_id', word.game_id);
+    const text = `Good news! Another word has been added to the Lexicon: ${word.word} (${wordUrl}) created by ${researcherName} (${profileUrl})`;
+    const html = `Good news! Another word has been added to the Lexicon: <a href="${escapeHtml(wordUrl)}">${escapeHtml(word.word)}</a> created by <a href="${escapeHtml(profileUrl)}">${escapeHtml(researcherName)}</a>`;
+    await client.send(new SendEmailCommand({
+      Source: process.env.EMAIL_FROM,
+      Destination: { ToAddresses: [address] },
+      Message: {
+        Subject: { Data: `[Lexicon] ${gameName} ${researcherName} has added a new word to the lexicon!`, Charset: 'UTF-8' },
+        Body: { Text: { Data: text, Charset: 'UTF-8' }, Html: { Data: html, Charset: 'UTF-8' } }
       }
     }));
   }
@@ -76,4 +113,4 @@ async function sendWelcome(email, preferences) {
   }
 }
 
-module.exports = { normalizeEmail, getEmailPreferences, sendWelcome, welcomeEmail, roundEmail };
+module.exports = { normalizeEmail, getEmailPreferences, sendWelcome, welcomeEmail, roundEmail, wordEmail };

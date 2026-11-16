@@ -101,11 +101,22 @@ window.addEventListener('DOMContentLoaded', () => {
         setMessage(message);
         return;
       }
+      if (result.warning) {
+        form.hidden = true;
+        setMessage(result.warning);
+        const link = document.createElement('a');
+        link.href = '/index.html' + (gameId ? `?game_id=${encodeURIComponent(gameId)}` : '');
+        link.textContent = ' Continue to the game';
+        document.getElementById('message').appendChild(link);
+        return;
+      }
       console.log('[FRONTEND new-definition] submit successful, redirecting to index');
       window.location.href = '/index.html' + (gameId ? `?game_id=${encodeURIComponent(gameId)}` : '');
     } catch (err) {
       console.error('[FRONTEND new-definition] submit exception', err);
       setMessage(err.message || 'Unable to save');
+    } finally {
+      if (!form.hidden) submitButton.disabled = false;
     }
   });
 });

@@ -25,6 +25,7 @@ Globals:
         CACHE_SIGNALS_TABLE: lexicon-2026-cache-signals
         JWT_SECRET: !Ref JwtSecret
         EMAIL_FROM: lexicon@benjamindionys.us
+        SITE_URL: https://lexicon-2026.sixbynine.com
 
 Resources:
   LexiconFunction:

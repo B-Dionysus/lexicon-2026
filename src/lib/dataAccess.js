@@ -162,15 +162,15 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     return result.Item || null;
   }
 
-  async function listRoundRecipients(gameId) {
+  async function listNotificationRecipients(gameId, preference) {
     const recipients = [];
     let lastKey;
     do {
       const result = await dynamodb.scan({
         TableName: tables.profiles,
-        FilterExpression: 'game_id = :gameId AND notify_round_complete = :enabled AND attribute_exists(#email)',
+        FilterExpression: 'game_id = :gameId AND #preference = :enabled AND attribute_exists(#email)',
         ExpressionAttributeValues: { ':gameId': gameId, ':enabled': true },
-        ExpressionAttributeNames: { '#email': 'email' },
+        ExpressionAttributeNames: { '#email': 'email', '#preference': preference },
         ProjectionExpression: 'user_name,#email',
         ConsistentRead: true,
         ...(lastKey && { ExclusiveStartKey: lastKey })
@@ -179,6 +179,14 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
       lastKey = result.LastEvaluatedKey;
     } while (lastKey);
     return recipients;
+  }
+
+  async function listRoundRecipients(gameId) {
+    return listNotificationRecipients(gameId, 'notify_round_complete');
+  }
+
+  async function listWordRecipients(gameId) {
+    return listNotificationRecipients(gameId, 'notify_word_created');
   }
 
   async function advanceRound(gameId, letter) {
@@ -213,7 +221,7 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     return item;
   }
 
-  async function updateWord(wordId, updates) {
+  async function updateWord(wordId, updates, options = {}) {
     const updateExpression = Object.keys(updates).map((key) => `#${key} = :${key}`).join(', ');
     const expressionAttributeNames = Object.keys(updates).reduce((acc, key) => ({ ...acc, [`#${key}`]: key }), {});
     const expressionAttributeValues = Object.keys(updates).reduce((acc, key) => ({ ...acc, [`:${key}`]: updates[key] }), {});
@@ -225,6 +233,11 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
       ExpressionAttributeValues: expressionAttributeValues,
       ReturnValues: 'ALL_NEW'
     };
+    if (Object.hasOwn(options, 'expectedDefinition')) {
+      params.ConditionExpression = 'attribute_exists(word_id) AND ' +
+        (options.expectedDefinition === undefined ? 'attribute_not_exists(#definition)' : '#definition = :previousDefinition');
+      if (options.expectedDefinition !== undefined) params.ExpressionAttributeValues[':previousDefinition'] = options.expectedDefinition;
+    }
     log('dataAccess.updateWord', wordId, updates);
     const res = await dynamodb.update(params).promise();
     return res.Attributes;
@@ -257,6 +270,7 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     getWord,
     getGame,
     listRoundRecipients,
+    listWordRecipients,
     advanceRound,
     createWordWithRelated,
     updateWord,

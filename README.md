@@ -9,14 +9,12 @@ This repository contains a lightweight Lexicon 2026 implementation with:
 
 ## To do!
 - Support richer markup in definitions.
-- Email notifications when a player posts a word.
 
 Definitions preserve line breaks entered in the editor on both the main page and the full definition page.
 
 Profiles can optionally include a private email address. A welcome email is sent
 when the address or notification preferences are added or changed; it summarizes
-the preferences. Word notifications are not yet implemented. Addresses
-are not verified. If SES rejects
+the preferences. Addresses are not verified. If SES rejects
 the send, the profile is saved and the player is warned. Local mock API saves
 addresses but does not send mail.
 
@@ -31,11 +29,19 @@ admin must decide when everyone has submitted; completion is not checked
 automatically. Email failures are reported after the round advances and require
 manual follow-up. Local mock API does not send round emails.
 
+Word notifications go to profiles associated with the game that have an email
+address and opted in. They are sent for a new defined word and when a previously
+undefined word receives its first definition, not for later edits. If a
+notification cannot be sent, the word is saved and the submitter is warned.
+The local mock API does not send word notifications.
+
 SES must have `lexicon@benjamindionys.us` (or its domain) verified as a sender
 in the deployment region. While SES is in the sandbox, recipients must also be
 verified; request production access to send to unverified recipients. The Lambda
 role is restricted to sending from this address. An accepted send is not a
 guarantee of delivery.
+`SITE_URL` in the SAM template sets the public base URL used in notification
+links.
 
 ## Word list cache
 

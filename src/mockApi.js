@@ -85,6 +85,18 @@ app.post('/api/words', authMiddleware, (req, res) => {
     debugLog('POST /api/words missing word');
     return res.status(400).json({ error: 'Word is required' });
   }
+  const notify = (item) => profiles.some((profile) =>
+    profile.game_id === item.game_id && profile.email && profile.notify_word_created === true);
+  if (req.body.word_id) {
+    const existing = words.find((word) => word.word_id === req.body.word_id);
+    if (!existing) return res.status(404).json({ error: 'Word not found' });
+    if (existing.user_name !== req.user.user_name) return res.status(403).json({ error: 'Forbidden' });
+    const definition = req.body.definition || '';
+    const firstDefinition = !existing.definition?.trim() && Boolean(definition.trim());
+    existing.definition = definition;
+    existing.updated_at = new Date().toISOString();
+    return res.json({ word: existing, ...(firstDefinition && notify(existing) && { warning: 'The word was saved, but the local mock API does not send word notifications.' }) });
+  }
   const item = {
     word_id: req.body.word_id || uuidv4(),
     word: wordText,
@@ -99,7 +111,7 @@ app.post('/api/words', authMiddleware, (req, res) => {
   };
   words.push(item);
   debugLog('POST /api/words created', item.word_id);
-  res.json({ word: item });
+  res.json({ word: item, ...(item.definition && notify(item) && { warning: 'The word was saved, but the local mock API does not send word notifications.' }) });
 });
 
 app.post('/api/signup', (req, res) => {

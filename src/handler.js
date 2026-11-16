@@ -21,7 +21,7 @@ const {
   error
 } = require('./lib/utils');
 const { createDataAccess } = require('./lib/dataAccess');
-const { normalizeEmail, getEmailPreferences, sendWelcome, welcomeEmail, roundEmail } = require('./lib/email');
+const { normalizeEmail, getEmailPreferences, sendWelcome, welcomeEmail, roundEmail, wordEmail } = require('./lib/email');
 
 function createDynamoDbAdapter(documentClient) {
   return {
@@ -155,8 +155,58 @@ async function createWord(item, relatedItems = [], nameClaims = []) {
   return dataAccess.createWordWithRelated(item, relatedItems, nameClaims);
 }
 
-async function updateWord(wordId, updates) {
-  return dataAccess.updateWord(wordId, updates);
+async function updateWord(wordId, updates, options) {
+  return dataAccess.updateWord(wordId, updates, options);
+}
+
+function hasDefinition(definition) {
+  return typeof definition === 'string' && definition.trim().length > 0;
+}
+
+async function saveDefinition(existing, definition) {
+  const updates = { definition, updated_at: new Date().toISOString() };
+  const firstDefinition = !hasDefinition(existing.definition) && hasDefinition(definition);
+  if (!firstDefinition) return { word: await updateWord(existing.word_id, updates), firstDefinition: false };
+  try {
+    const word = await updateWord(existing.word_id, updates, { expectedDefinition: existing.definition });
+    return { word, firstDefinition: true };
+  } catch (err) {
+    if (err.name !== 'ConditionalCheckFailedException') throw err;
+    const latest = await getWord(existing.word_id);
+    if (!latest || !hasDefinition(latest.definition)) throw err;
+    return { word: await updateWord(existing.word_id, updates), firstDefinition: false };
+  }
+}
+
+async function finishWordSave(word, notify) {
+  const warnings = [];
+  invalidateWordListCache(word.game_id);
+  try {
+    await dataAccess.touchCacheSignal(word.game_id);
+  } catch (err) {
+    console.error('[CACHE] Word list invalidation failed:', err.name);
+    warnings.push('The word was saved, but the word list may not update immediately.');
+  }
+  if (notify) {
+    try {
+      const recipients = await dataAccess.listWordRecipients(word.game_id);
+      if (recipients.length) {
+        const [game, profile] = await Promise.all([getGame(word.game_id), getProfile(word.user_name)]);
+        if (!game?.name || !profile?.researcher_name) throw new Error('Missing game or researcher name');
+        const results = await Promise.allSettled(recipients.map(({ email }) =>
+          wordEmail.send(email, game.name, profile.researcher_name, word)));
+        const failures = results.filter((result) => result.status === 'rejected').length;
+        if (failures) {
+          console.error('[EMAIL] Word emails failed:', failures, 'of', recipients.length);
+          warnings.push(`The word was saved, but ${failures} notification email(s) could not be sent.`);
+        }
+      }
+    } catch (err) {
+      console.error('[EMAIL] Word notifications could not be prepared:', err.name);
+      warnings.push('The word was saved, but notification emails could not be sent.');
+    }
+  }
+  return success({ word, ...(warnings.length && { warning: warnings.join(' ') }) });
 }
 
 async function handleSignup(event) {
@@ -261,13 +311,8 @@ async function handleCreateWord(event) {
     const existing = await getWord(body.word_id);
     if (!existing) return error('Word not found', 404);
     if (existing.user_name !== user.user_name) return error('Forbidden', 403);
-    const updated = await updateWord(body.word_id, {
-      definition: body.definition || '',
-      updated_at: new Date().toISOString()
-    });
-    await dataAccess.touchCacheSignal(existing.game_id);
-    invalidateWordListCache(existing.game_id);
-    return success({ word: updated });
+    const result = await saveDefinition(existing, body.definition || '');
+    return finishWordSave(result.word, result.firstDefinition);
   }
 
   const wordId = uuidv4();
@@ -358,9 +403,7 @@ async function handleCreateWord(event) {
     }
     throw err;
   }
-  await dataAccess.touchCacheSignal(gameId);
-  invalidateWordListCache(gameId);
-  return success({ word: item });
+  return finishWordSave(item, hasDefinition(item.definition));
 }
 
 async function handleUpdateWord(event) {
@@ -372,14 +415,8 @@ async function handleUpdateWord(event) {
   const existing = await getWord(wordId);
   if (!existing) return error('Word not found', 404);
   if (existing.user_name !== user.user_name) return error('Forbidden', 403);
-  const updates = {
-    definition: body.definition || '',
-    updated_at: new Date().toISOString()
-  };
-  const updated = await updateWord(wordId, updates);
-  await dataAccess.touchCacheSignal(existing.game_id);
-  invalidateWordListCache(existing.game_id);
-  return success({ word: updated });
+  const result = await saveDefinition(existing, body.definition || '');
+  return finishWordSave(result.word, result.firstDefinition);
 }
 
 async function handleGetProfile(event) {
@@ -429,7 +466,7 @@ async function handleEndRound(event) {
     throw err;
   }
   const results = await Promise.allSettled(recipients.map(({ email }) =>
-    roundEmail.send(email, game.name || gameId, letter, state.completed ? null : state.current_letter)));
+    roundEmail.send(email, game.name || gameId, letter, state.completed ? null : state.current_letter, gameId)));
   const failed = results.flatMap((result, index) => result.status === 'rejected' ? [recipients[index].user_name] : []);
   if (failed.length) console.error('[EMAIL] Round emails failed:', failed.length, 'of', recipients.length);
   return success({ game: { game_id: gameId, name: game.name || gameId, ...state },
@@ -567,6 +604,7 @@ exports.__test__ = {
   dynamodb,
   welcomeEmail,
   roundEmail,
+  wordEmail,
   clearWordListCache,
   invalidateWordListCache,
   wordListCache

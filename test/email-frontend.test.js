@@ -113,3 +113,31 @@ test('admin profile control advances the displayed game and reports email failur
   assert.equal(section.children[2].textContent, 'Email failed');
   assert.equal(button.disabled, false);
 });
+
+test('word submission displays a notification failure without allowing a duplicate save', async () => {
+  let source = await readFile(path.join(__dirname, '../public/new-definition.js'), 'utf8');
+  source = source.replace(/^import .*;\n/gm, '');
+  let onReady;
+  let submit;
+  const form = { hidden: false, addEventListener(_type, listener) { submit = listener; } };
+  const button = { disabled: false };
+  const message = { textContent: '', classList: { toggle() {} }, appendChild(child) { this.link = child; } };
+  const nodes = { definitionForm: form, word: {}, submit: button, message };
+  const window = {
+    location: { search: '?game_id=game', href: '' }, APP_CONFIG: { apiBase: '/api' },
+    addEventListener(_type, listener) { onReady = listener; }
+  };
+  vm.runInNewContext(source, {
+    window, document: { getElementById: (id) => nodes[id], createElement: () => ({}) },
+    localStorage: { getItem: () => 'token' }, initGlobalLoader() {}, URLSearchParams, console,
+    FormData: class { entries() { return Object.entries({ word: 'alpha', definition: 'Definition' }); } },
+    fetch: async () => ({ ok: true, json: async () => ({ warning: 'The word was saved, but notification emails could not be sent.' }) })
+  });
+  onReady();
+  await submit({ preventDefault() {} });
+  assert.equal(form.hidden, true);
+  assert.equal(button.disabled, true);
+  assert.match(message.textContent, /word was saved/);
+  assert.equal(message.link.href, '/index.html?game_id=game');
+  assert.equal(window.location.href, '');
+});

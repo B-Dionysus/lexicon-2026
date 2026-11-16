@@ -76,7 +76,7 @@ test('round sends individual notifications, reports failures and finishes after 
   const result = JSON.parse(response.body);
   assert.equal(result.game.completed, true);
   assert.match(result.warning, /two/);
-  assert.deepEqual(send.mock.calls[0].arguments, ['one@example.com', 'Game', 'Z', null]);
+  assert.deepEqual(send.mock.calls[0].arguments, ['one@example.com', 'Game', 'Z', null, 'game']);
   assert.equal(send.mock.calls.length, 2);
 });
 
@@ -107,16 +107,22 @@ test('round update uses a conditional write for A and final Z', async () => {
   assert.match(requests[1].ConditionExpression, /completed/);
 });
 
-test('round email announces the next letter and reminder; final round says game complete', async (t) => {
+test('round email links to the new letter; final round says game complete', async (t) => {
   const previous = process.env.EMAIL_FROM;
+  const previousSite = process.env.SITE_URL;
   process.env.EMAIL_FROM = 'sender@example.com';
-  t.after(() => { if (previous === undefined) delete process.env.EMAIL_FROM; else process.env.EMAIL_FROM = previous; });
+  process.env.SITE_URL = 'https://example.test';
+  t.after(() => {
+    if (previous === undefined) delete process.env.EMAIL_FROM; else process.env.EMAIL_FROM = previous;
+    if (previousSite === undefined) delete process.env.SITE_URL; else process.env.SITE_URL = previousSite;
+  });
   const send = t.mock.method(SESClient.prototype, 'send', async () => ({}));
-  await roundEmail.send('player@example.com', 'Game', 'A', 'B');
+  await roundEmail.send('player@example.com', 'Game', 'A', 'B', 'game & one');
   const email = send.mock.calls[0].arguments[0].input;
   assert.deepEqual(email.Destination.ToAddresses, ['player@example.com']);
-  assert.match(email.Message.Body.Text.Data, /Round A is over.*letter B/);
-  assert.match(email.Message.Body.Text.Data, /define previously undefined words first/);
+  assert.equal(email.Message.Subject.Data, '[Lexicon] Time for a new letter');
+  assert.equal(email.Message.Body.Html.Data, 'Good news! We are moving on to the B words! <a href="https://example.test/index.html?game_id=game+%26+one">Click here</a> to add a new B word! Please remember to defined previously-existing but undefined B words before creating a brand new entry.');
+  assert.match(email.Message.Body.Text.Data, /game_id=game\+%26\+one/);
   await roundEmail.send('player@example.com', 'Game', 'Z', null);
   assert.match(send.mock.calls[1].arguments[0].input.Message.Body.Text.Data, /Game is complete/);
 });
