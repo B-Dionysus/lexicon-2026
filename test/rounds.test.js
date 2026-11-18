@@ -244,7 +244,7 @@ test('round email links to the new letter; final round says game complete', asyn
   await roundEmail.send('player@example.com', 'Game', 'A', 'B', 'game & one');
   const email = send.mock.calls[0].arguments[0].input;
   assert.deepEqual(email.Destination.ToAddresses, ['player@example.com']);
-  assert.equal(email.Message.Subject.Data, '[Lexicon] Time for a new letter');
+  assert.equal(email.Message.Subject.Data, '[Lexicon] Game: Time for a new letter');
   assertBoxedBody(email.Message.Body);
   assert.match(email.Message.Body.Html.Data, /href="https:\/\/example\.test\/index\.html\?game_id=game\+%26\+one"/);
   assert.match(email.Message.Body.Text.Data, /Good news!/);

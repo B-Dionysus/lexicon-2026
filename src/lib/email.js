@@ -119,7 +119,7 @@ const roundEmail = {
       if (!process.env.SITE_URL) throw new Error('SITE_URL is not configured');
       const gameUrl = new URL('/index.html', process.env.SITE_URL);
       gameUrl.searchParams.set('game_id', gameId);
-      subject = '[Lexicon] Time for a new letter';
+      subject = `[Lexicon] ${gameName}: Time for a new letter`;
       text = `Good news! We are moving on to the ${nextLetter} words!\n\nClick here to add a new ${nextLetter} word:\n${gameUrl}\n\nPlease remember to defined previously-existing but undefined ${nextLetter} words before creating a brand new entry.`;
     }
     const body = formatEmailBody(text);
