@@ -49,15 +49,20 @@ function capitalize(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function decorateWordsWithResearcherNames(words, profilesByUserName) {
+// A game-specific researcher name wins over the account's default name.
+function resolveResearcher(profile, researcher) {
+  return {
+    researcher_name: (researcher && researcher.researcher_name) || (profile && profile.researcher_name) || null,
+    researcher_bio: (researcher && researcher.researcher_bio) || (profile && profile.researcher_bio) || null
+  };
+}
+
+function decorateWordsWithResearcherNames(words, profilesByUserName, researchersByUserName = {}) {
   if (!Array.isArray(words)) return [];
-  return words.map((word) => {
-    const profile = profilesByUserName && profilesByUserName[word.user_name];
-    return {
-      ...word,
-      researcher_name: profile && profile.researcher_name ? profile.researcher_name : null
-    };
-  });
+  return words.map((word) => ({
+    ...word,
+    researcher_name: resolveResearcher(profilesByUserName && profilesByUserName[word.user_name], researchersByUserName[word.user_name]).researcher_name
+  }));
 }
 
 function extractBody(event) {
@@ -96,6 +101,7 @@ module.exports = {
   parseAuthTokenFromHeader,
   getCurrentUserNameFromToken,
   capitalize,
+  resolveResearcher,
   decorateWordsWithResearcherNames,
   extractBody,
   success,

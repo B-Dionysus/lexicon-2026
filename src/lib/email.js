@@ -150,7 +150,7 @@ const wordEmail = {
     const profileUrl = new URL('/profile.html', process.env.SITE_URL);
     profileUrl.searchParams.set('user_name', word.user_name);
     profileUrl.searchParams.set('game_id', word.game_id);
-    const body = formatEmailBody(`Good news! Another word has been added to the Lexicon:\nWord: ${word.word}\n${wordUrl}\n\nCreated by ${researcherName}\n${profileUrl}`);
+    const body = formatEmailBody(`Good news! Another word has been added to the Lexicon for ${gameName}:\nWord: ${word.word}\n${wordUrl}\n\nCreated by ${researcherName}\n${profileUrl}`);
     await client.send(new SendEmailCommand({
       Source: process.env.EMAIL_FROM,
       Destination: { ToAddresses: [address] },

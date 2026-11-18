@@ -6,6 +6,9 @@ const handler = require('../src/handler');
 const { createDataAccess } = require('../src/lib/dataAccess');
 const { roundEmail } = require('../src/lib/email');
 
+// Default to no game-specific researcher rows; tests that need one override these.
+Object.assign(handler.__test__.dataAccess, { getResearcher: async () => null, getResearchersByGame: async () => [], saveResearcher: async () => {} });
+
 const access = handler.__test__.dataAccess;
 const auth = (name) => ({ Authorization: `Bearer ${jwt.sign({ user_name: name }, process.env.JWT_SECRET || 'dev-secret')}` });
 const event = (name, body) => ({ headers: name ? auth(name) : {}, body: JSON.stringify(body) });
@@ -32,6 +35,70 @@ test('signup rejects the example and nonexistent games before saving', async (t)
   }
   assert.equal(getGame.mock.calls.length, 1);
   assert.equal(put.mock.calls.length, 0);
+});
+
+test('existing account joins another game with its password and can use a different researcher', async (t) => {
+  const bcrypt = require('bcryptjs');
+  t.mock.method(access, 'getGame', async () => ({ game_id: 'second' }));
+  t.mock.method(access, 'getProfile', async () => ({ user_name: 'ada', researcher_name: 'Ada', researcher_bio: 'Bio', password_hash: bcrypt.hashSync('password123', 4) }));
+  const save = t.mock.method(access, 'saveResearcher', async () => {});
+  const transact = t.mock.method(handler.__test__.dynamodb, 'transactWrite', () => { throw new Error('unexpected write'); });
+
+  const wrong = await handler.handleSignup(event(null, { user_name: 'ada', password: 'wrong-password', game_id: 'second' }));
+  assert.equal(wrong.statusCode, 409);
+  assert.equal(save.mock.calls.length, 0);
+
+  const reused = await handler.handleSignup(event(null, { user_name: 'ada', password: 'password123', game_id: 'second' }));
+  const result = JSON.parse(reused.body);
+  assert.equal(reused.statusCode, 200);
+  assert.equal(result.joined, true);
+  assert.deepEqual(save.mock.calls[0].arguments, ['ada', 'second', { researcher_name: 'Ada', researcher_bio: 'Bio' }]);
+  assert.equal(jwt.verify(result.token, process.env.JWT_SECRET || 'dev-secret').user_name, 'ada');
+
+  const custom = await handler.handleSignup(event(null, { user_name: 'ada', password: 'password123', game_id: 'second', researcher_name: 'Dr. Ada', researcher_bio: ' ' }));
+  assert.equal(JSON.parse(custom.body).profile.researcher_name, 'Dr. Ada');
+  assert.deepEqual(save.mock.calls[1].arguments[2], { researcher_name: 'Dr. Ada', researcher_bio: 'Bio' });
+  assert.equal(transact.mock.calls.length, 0);
+});
+
+test('profile and word views use the game-specific researcher over the account default', async (t) => {
+  t.mock.method(access, 'getProfile', async () => ({ user_name: 'ada', researcher_name: 'Ada', researcher_bio: 'Default bio' }));
+  const lookups = [];
+  t.mock.method(access, 'getResearcher', async (user, game) => {
+    lookups.push(game);
+    return game === 'second' ? { researcher_name: 'Dr. Ada', researcher_bio: 'Second bio' } : null;
+  });
+  const words = t.mock.method(access, 'listWordsByUserNameAndGame', async () => []);
+  const view = async (game_id) => JSON.parse((await handler.handleGetProfile({ pathParameters: { user_name: 'ada' }, queryStringParameters: { game_id }, headers: {} })).body);
+
+  const second = await view('second');
+  assert.equal(second.profile.researcher_name, 'Dr. Ada');
+  assert.equal(second.profile.researcher_bio, 'Second bio');
+  const first = await view('first');
+  assert.equal(first.profile.researcher_name, 'Ada');
+  assert.equal(first.profile.researcher_bio, 'Default bio');
+  assert.deepEqual(words.mock.calls.map((call) => call.arguments), [['ada', 'second'], ['ada', 'first']]);
+
+  handler.__test__.clearWordListCache();
+  t.after(() => handler.__test__.clearWordListCache());
+  t.mock.method(access, 'getCacheSignal', async () => 'token');
+  t.mock.method(access, 'listWordsByGame', async () => [{ word_id: 'w', user_name: 'ada', game_id: 'second' }]);
+  t.mock.method(access, 'getProfilesByUserNames', async () => [{ user_name: 'ada', researcher_name: 'Ada' }]);
+  t.mock.method(access, 'getResearchersByGame', async (game, names) => { assert.deepEqual([game, names], ['second', ['ada']]); return [{ user_name: 'ada', researcher_name: 'Dr. Ada' }]; });
+  const list = await handler.handleGetWords({ queryStringParameters: { game_id: 'second' }, headers: {} });
+  assert.equal(JSON.parse(list.body).words[0].researcher_name, 'Dr. Ada');
+});
+
+test('editing a profile inside a game changes only that game researcher', async (t) => {
+  const stored = { user_name: 'ada', researcher_name: 'Ada', researcher_bio: 'Bio' };
+  t.mock.method(access, 'getProfile', async () => stored);
+  const update = t.mock.method(access, 'updateProfile', async () => {});
+  const save = t.mock.method(access, 'saveResearcher', async () => {});
+  const response = await handler.handleUpdateProfile({ headers: auth('ada'), body: JSON.stringify({ user_name: 'ada', game_id: 'second', researcher_name: 'Dr. Ada' }) });
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body).profile.researcher_bio, 'Bio');
+  assert.deepEqual(save.mock.calls[0].arguments, ['ada', 'second', { researcher_name: 'Dr. Ada', researcher_bio: 'Bio' }]);
+  assert.equal(Object.hasOwn(update.mock.calls[0].arguments[1], 'researcher_name'), false);
 });
 
 test('admin section is returned only to an admin viewing their own profile', async (t) => {
@@ -94,18 +161,63 @@ test('round sends individual notifications, reports failures and finishes after 
 
 test('recipient scan paginates and filters by game and opt-in', async () => {
   const requests = [];
-  const db = { scan: (params) => ({ promise: async () => {
-    requests.push(params);
-    return requests.length === 1
-      ? { Items: [{ user_name: 'a', email: 'a@example.com' }], LastEvaluatedKey: { user_name: 'a' } }
-      : { Items: [{ user_name: 'b', email: '' }, { user_name: 'c', email: 'c@example.com' }] };
-  } }) };
-  const data = createDataAccess({ dynamodb: db, tables: { profiles: 'profiles' } });
+  const db = {
+    scan: (params) => ({ promise: async () => {
+      requests.push(params);
+      return requests.length === 1
+        ? { Items: [{ user_name: 'a', email: 'a@example.com' }], LastEvaluatedKey: { user_name: 'a' } }
+        : { Items: [{ user_name: 'b', email: '' }, { user_name: 'c', email: 'c@example.com' }] };
+    } }),
+    query: () => ({ promise: async () => ({ Items: [] }) })
+  };
+  const data = createDataAccess({ dynamodb: db, tables: { profiles: 'profiles', researchers: 'researchers' } });
   const result = await data.listRoundRecipients('game');
   assert.deepEqual(result.map((profile) => profile.user_name), ['a', 'c']);
   assert.equal(requests[0].ExpressionAttributeValues[':gameId'], 'game');
   assert.equal(requests[0].ExpressionAttributeValues[':enabled'], true);
   assert.deepEqual(requests[1].ExclusiveStartKey, { user_name: 'a' });
+});
+
+test('recipients include players who joined the game and skip other games and non-opted-in members', async () => {
+  const queries = [];
+  const batches = [];
+  const db = {
+    scan: () => ({ promise: async () => ({ Items: [{ user_name: 'legacy', email: 'legacy@example.com' }] }) }),
+    query: (params) => ({ promise: async () => { queries.push(params); return { Items: [{ user_name: 'legacy' }, { user_name: 'joined' }, { user_name: 'quiet' }, { user_name: 'noemail' }] }; } }),
+    batchGet: (params) => ({ promise: async () => {
+      batches.push(params);
+      return { Responses: { profiles: [
+        { user_name: 'legacy', email: 'legacy@example.com', notify_round_complete: true },
+        { user_name: 'joined', email: 'joined@example.com', notify_round_complete: true },
+        { user_name: 'quiet', email: 'quiet@example.com', notify_round_complete: false },
+        { user_name: 'noemail', notify_round_complete: true }
+      ] } };
+    } })
+  };
+  const data = createDataAccess({ dynamodb: db, tables: { profiles: 'profiles', researchers: 'researchers' } });
+  const result = await data.listRoundRecipients('second');
+  assert.deepEqual(result.map((profile) => profile.email).sort(), ['joined@example.com', 'legacy@example.com']);
+  assert.equal(queries[0].TableName, 'researchers');
+  assert.equal(queries[0].IndexName, 'game_id-user_name-index');
+  assert.equal(queries[0].ExpressionAttributeValues[':gameId'], 'second');
+  assert.equal(batches[0].RequestItems.profiles.ExpressionAttributeNames['#preference'], 'notify_round_complete');
+});
+
+test('researcher rows are keyed by user and game', async () => {
+  const requests = [];
+  const db = {
+    get: (params) => ({ promise: async () => { requests.push(params); return { Item: { researcher_name: 'Dr. Ada' } }; } }),
+    update: (params) => ({ promise: async () => { requests.push(params); return {}; } }),
+    batchGet: (params) => ({ promise: async () => { requests.push(params); return { Responses: { researchers: [{ user_name: 'ada' }] } }; } })
+  };
+  const data = createDataAccess({ dynamodb: db, tables: { researchers: 'researchers' } });
+  assert.equal((await data.getResearcher('ada', 'second')).researcher_name, 'Dr. Ada');
+  assert.deepEqual(requests[0].Key, { user_name: 'ada', game_id: 'second' });
+  await data.saveResearcher('ada', 'second', { researcher_name: 'Dr. Ada', researcher_bio: 'Bio' });
+  assert.deepEqual(requests[1].Key, { user_name: 'ada', game_id: 'second' });
+  assert.match(requests[1].UpdateExpression, /created_at = if_not_exists\(created_at/);
+  await data.getResearchersByGame('second', ['ada', 'ada']);
+  assert.deepEqual(requests[2].RequestItems.researchers.Keys, [{ user_name: 'ada', game_id: 'second' }]);
 });
 
 test('round update uses a conditional write for A and final Z', async () => {

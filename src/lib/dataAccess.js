@@ -162,8 +162,45 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     return result.Item || null;
   }
 
+  async function listGameMemberNames(gameId) {
+    const names = [];
+    let lastKey;
+    do {
+      const result = await dynamodb.query({
+        TableName: tables.researchers,
+        IndexName: 'game_id-user_name-index',
+        KeyConditionExpression: 'game_id = :gameId',
+        ExpressionAttributeValues: { ':gameId': gameId },
+        ProjectionExpression: 'user_name',
+        ...(lastKey && { ExclusiveStartKey: lastKey })
+      }).promise();
+      names.push(...(result.Items || []).map((item) => item.user_name));
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+    return names;
+  }
+
+  async function getProfilesForNotification(userNames, preference) {
+    const profiles = [];
+    for (let i = 0; i < userNames.length; i += 100) {
+      const response = await dynamodb.batchGet({
+        RequestItems: {
+          [tables.profiles]: {
+            Keys: userNames.slice(i, i + 100).map((userName) => ({ user_name: userName })),
+            ProjectionExpression: 'user_name,#email,#preference',
+            ExpressionAttributeNames: { '#email': 'email', '#preference': preference }
+          }
+        }
+      }).promise();
+      profiles.push(...(response.Responses?.[tables.profiles] || []));
+    }
+    return profiles.filter((profile) => profile[preference] === true && profile.email);
+  }
+
+  // Players belong to a game through a researchers row; profiles created before that
+  // table existed are still matched by their original game_id.
   async function listNotificationRecipients(gameId, preference) {
-    const recipients = [];
+    const recipients = new Map();
     let lastKey;
     do {
       const result = await dynamodb.scan({
@@ -175,10 +212,12 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
         ConsistentRead: true,
         ...(lastKey && { ExclusiveStartKey: lastKey })
       }).promise();
-      recipients.push(...(result.Items || []).filter((profile) => profile.email));
+      for (const profile of result.Items || []) if (profile.email) recipients.set(profile.user_name, profile);
       lastKey = result.LastEvaluatedKey;
     } while (lastKey);
-    return recipients;
+    const members = await getProfilesForNotification(await listGameMemberNames(gameId), preference);
+    for (const profile of members) recipients.set(profile.user_name, { user_name: profile.user_name, email: profile.email });
+    return [...recipients.values()];
   }
 
   async function listRoundRecipients(gameId) {
@@ -259,6 +298,46 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     await dynamodb.update(params).promise();
   }
 
+  async function getResearcher(userName, gameId) {
+    if (!userName || !gameId) return null;
+    log('dataAccess.getResearcher', { userName, gameId });
+    const result = await dynamodb.get({
+      TableName: tables.researchers,
+      Key: { user_name: userName, game_id: gameId },
+      ConsistentRead: true
+    }).promise();
+    return result.Item || null;
+  }
+
+  async function getResearchersByGame(gameId, userNames) {
+    const uniqueUserNames = [...new Set((userNames || []).filter(Boolean))];
+    const researchers = [];
+    for (let i = 0; i < uniqueUserNames.length; i += 100) {
+      log('dataAccess.getResearchersByGame', gameId, uniqueUserNames.length);
+      const response = await dynamodb.batchGet({
+        RequestItems: {
+          [tables.researchers]: {
+            Keys: uniqueUserNames.slice(i, i + 100).map((userName) => ({ user_name: userName, game_id: gameId })),
+            ProjectionExpression: 'user_name,game_id,researcher_name,researcher_bio'
+          }
+        }
+      }).promise();
+      researchers.push(...(response.Responses?.[tables.researchers] || []));
+    }
+    return researchers;
+  }
+
+  async function saveResearcher(userName, gameId, { researcher_name, researcher_bio }) {
+    log('dataAccess.saveResearcher', { userName, gameId });
+    const now = new Date().toISOString();
+    await dynamodb.update({
+      TableName: tables.researchers,
+      Key: { user_name: userName, game_id: gameId },
+      UpdateExpression: 'SET researcher_name = :name, researcher_bio = :bio, updated_at = :now, created_at = if_not_exists(created_at, :now)',
+      ExpressionAttributeValues: { ':name': researcher_name, ':bio': researcher_bio, ':now': now }
+    }).promise();
+  }
+
   return {
     getProfile,
     getProfilesByUserNames,
@@ -274,7 +353,10 @@ function createDataAccess({ dynamodb, tables, logger = () => {} }) {
     advanceRound,
     createWordWithRelated,
     updateWord,
-    updateProfile
+    updateProfile,
+    getResearcher,
+    getResearchersByGame,
+    saveResearcher
   };
 }
 

@@ -5,6 +5,9 @@ const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 const handler = require('../src/handler');
 const { normalizeEmail, welcomeEmail } = require('../src/lib/email');
 
+// Default to no game-specific researcher rows; tests that need one override these.
+Object.assign(handler.__test__.dataAccess, { getResearcher: async () => null, getResearchersByGame: async () => [], saveResearcher: async () => {} });
+
 const access = handler.__test__.dataAccess;
 const auth = (name) => ({ Authorization: 'Bearer ' + jwt.sign({ user_name: name }, process.env.JWT_SECRET || 'dev-secret') });
 
@@ -96,14 +99,14 @@ test('signup saves an optional email and sends a welcome email', async (t) => {
   t.mock.method(access, 'getProfile', async () => null);
   t.mock.method(access, 'getGame', async () => ({ game_id: 'game' }));
   let saved;
-  t.mock.method(handler.__test__.dynamodb, 'put', (params) => ({ promise: async () => { saved = params.Item; } }));
+  t.mock.method(handler.__test__.dynamodb, 'transactWrite', (params) => ({ promise: async () => { saved = params.TransactItems[0].Put.Item; } }));
   const send = t.mock.method(handler.__test__.welcomeEmail, 'send', async () => {});
   const body = { user_name: 'researcher', game_id: 'game', password: 'password123', repeat_password: 'password123', researcher_name: 'Ada', researcher_bio: 'Bio', email: ' player@example.com ', notify_word_created: true, notify_round_complete: false };
 
   const response = await handler.handleSignup({ body: JSON.stringify(body) });
   assert.equal(response.statusCode, 200);
   assert.equal(saved.email, 'player@example.com');
-  assert.equal(saved.game_id, 'game');
+  assert.equal(saved.game_id, undefined);
   assert.equal(send.mock.calls.length, 1);
   assert.equal(send.mock.calls[0].arguments[0], saved.email);
   assert.deepEqual(send.mock.calls[0].arguments[1], { notify_word_created: true, notify_round_complete: false });

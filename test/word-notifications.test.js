@@ -6,6 +6,9 @@ const handler = require('../src/handler');
 const { createDataAccess } = require('../src/lib/dataAccess');
 const { wordEmail } = require('../src/lib/email');
 
+// Default to no game-specific researcher rows; tests that need one override these.
+Object.assign(handler.__test__.dataAccess, { getResearcher: async () => null, getResearchersByGame: async () => [], saveResearcher: async () => {} });
+
 const access = handler.__test__.dataAccess;
 const headers = { Authorization: `Bearer ${jwt.sign({ user_name: 'writer' }, process.env.JWT_SECRET || 'dev-secret')}` };
 
@@ -44,9 +47,9 @@ test('recipient scan selects only opted-in profiles for the specified game acros
   const calls = [];
   const db = { scan: (params) => ({ promise: async () => {
     calls.push(params);
-    return calls.length === 1 ? { Items: [{ email: 'one@example.com' }], LastEvaluatedKey: { user_name: 'one' } } : { Items: [{ email: '' }, { email: 'two@example.com' }] };
-  } }) };
-  const data = createDataAccess({ dynamodb: db, tables: { profiles: 'profiles' } });
+    return calls.length === 1 ? { Items: [{ user_name: 'one', email: 'one@example.com' }], LastEvaluatedKey: { user_name: 'one' } } : { Items: [{ user_name: 'x', email: '' }, { user_name: 'two', email: 'two@example.com' }] };
+  } }), query: () => ({ promise: async () => ({ Items: [] }) }) };
+  const data = createDataAccess({ dynamodb: db, tables: { profiles: 'profiles', researchers: 'researchers' } });
   assert.deepEqual((await data.listWordRecipients('game')).map((profile) => profile.email), ['one@example.com', 'two@example.com']);
   assert.equal(calls[0].ExpressionAttributeNames['#preference'], 'notify_word_created');
   assert.equal(calls[0].ExpressionAttributeValues[':gameId'], 'game');

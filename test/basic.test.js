@@ -5,6 +5,9 @@ const bcrypt = require('bcryptjs');
 const { normalizeGameId, parseAuthTokenFromHeader, resolveApiBase, getCurrentUserNameFromToken, decorateWordsWithResearcherNames } = require('../src/lib/utils');
 const { createDataAccess } = require('../src/lib/dataAccess');
 const handlerModule = require('../src/handler');
+
+// Default to no game-specific researcher rows; tests that need one override these.
+Object.assign(handlerModule.__test__.dataAccess, { getResearcher: async () => null, getResearchersByGame: async () => [], saveResearcher: async () => {} });
 const { handler } = handlerModule;
 
 function createMockDynamo({ getResult = { Item: null }, queryResult = { Items: [] }, batchGetResult = { Responses: {} }, updateResult = { Attributes: {} }, transactWriteResult = {}, putResult = {} } = {}) {
@@ -486,11 +489,12 @@ test('handleCreateWord preserves line breaks when editing an existing word', asy
 test('handleSignup creates a new profile and returns a token', async () => {
   const originalGetProfile = handlerModule.__test__.dataAccess.getProfile;
   const originalGetGame = handlerModule.__test__.dataAccess.getGame;
-  const originalPut = handlerModule.__test__.dynamodb.put;
+  const originalTransactWrite = handlerModule.__test__.dynamodb.transactWrite;
+  let written;
 
   handlerModule.__test__.dataAccess.getProfile = async () => null;
   handlerModule.__test__.dataAccess.getGame = async () => ({ game_id: 'game' });
-  handlerModule.__test__.dynamodb.put = (params) => ({ promise: async () => ({}) });
+  handlerModule.__test__.dynamodb.transactWrite = (params) => ({ promise: async () => { written = params.TransactItems; } });
 
   const response = await handlerModule.handleSignup({
     body: JSON.stringify({
@@ -505,9 +509,11 @@ test('handleSignup creates a new profile and returns a token', async () => {
 
   handlerModule.__test__.dataAccess.getProfile = originalGetProfile;
   handlerModule.__test__.dataAccess.getGame = originalGetGame;
-  handlerModule.__test__.dynamodb.put = originalPut;
+  handlerModule.__test__.dynamodb.transactWrite = originalTransactWrite;
 
   assert.equal(response.statusCode, 200);
+  assert.equal(written[1].Put.Item.game_id, 'game');
+  assert.equal(written[1].Put.Item.researcher_name, 'Ada');
   const payload = JSON.parse(response.body);
   assert.equal(payload.profile.user_name, 'researcher');
   assert.equal(typeof payload.token, 'string');

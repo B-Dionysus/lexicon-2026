@@ -16,6 +16,7 @@ const { v4: uuidv4 } = require('uuid');
 const {
   normalizeGameId,
   parseAuthTokenFromHeader,
+  resolveResearcher,
   decorateWordsWithResearcherNames,
   extractBody,
   success,
@@ -68,6 +69,7 @@ const dynamodb = createDynamoDbAdapter(DynamoDBDocumentClient.from(new DynamoDBC
 const TABLE_WORDS = process.env.WORDS_TABLE || 'lexicon-2026-words';
 const TABLE_GAMES = process.env.GAMES_TABLE || 'lexicon-2026-games';
 const TABLE_PROFILES = process.env.PROFILES_TABLE || 'lexicon-2026-profiles';
+const TABLE_RESEARCHERS = process.env.RESEARCHERS_TABLE || 'lexicon-2026-researchers';
 const TABLE_CACHE_SIGNALS = process.env.CACHE_SIGNALS_TABLE || 'lexicon-2026-cache-signals';
 // When JWT_SECRET_PARAMETER is set, the secret comes from SSM and there is no fallback.
 let JWT_SECRET = process.env.JWT_SECRET_PARAMETER ? undefined : (process.env.JWT_SECRET || 'dev-secret');
@@ -118,6 +120,7 @@ const dataAccess = createDataAccess({
     words: TABLE_WORDS,
     games: TABLE_GAMES,
     profiles: TABLE_PROFILES,
+    researchers: TABLE_RESEARCHERS,
     cacheSignals: TABLE_CACHE_SIGNALS
   },
   logger: debugLog
@@ -211,10 +214,11 @@ async function finishWordSave(word, notify) {
     try {
       const recipients = await dataAccess.listWordRecipients(word.game_id);
       if (recipients.length) {
-        const [game, profile] = await Promise.all([getGame(word.game_id), getProfile(word.user_name)]);
-        if (!game?.name || !profile?.researcher_name) throw new Error('Missing game or researcher name');
+        const [game, profile, researcher] = await Promise.all([getGame(word.game_id), getProfile(word.user_name), dataAccess.getResearcher(word.user_name, word.game_id)]);
+        const { researcher_name } = resolveResearcher(profile, researcher);
+        if (!game?.name || !researcher_name) throw new Error('Missing game or researcher name');
         const results = await Promise.allSettled(recipients.map(({ email }) =>
-          wordEmail.send(email, game.name, profile.researcher_name, word)));
+          wordEmail.send(email, game.name, researcher_name, word)));
         const failures = results.filter((result) => result.status === 'rejected').length;
         if (failures) {
           console.error('[EMAIL] Word emails failed:', failures, 'of', recipients.length);
@@ -235,6 +239,22 @@ async function handleSignup(event) {
   const gameId = typeof body.game_id === 'string' ? normalizeGameId(body.game_id) : 'default';
   if (gameId === 'default') return error('Please visit your game URL again before creating a profile; the Example Game does not accept signups.', 400);
   if (!await getGame(gameId)) return error('Game not found. Please visit your game URL again before creating a profile.', 400);
+  // An existing account joins the game instead. Its profile and preferences are left
+  // unchanged; the researcher name and bio default to the account's unless given.
+  const existing = user_name && password ? await getProfile(user_name) : null;
+  if (existing) {
+    if (!existing.password_hash || !bcrypt.compareSync(password, existing.password_hash)) {
+      return error('User already exists. To join this game with that account, enter its password.', 409);
+    }
+    const current = resolveResearcher(existing, await dataAccess.getResearcher(user_name, gameId));
+    const researcher = {
+      researcher_name: typeof researcher_name === 'string' && researcher_name.trim() || current.researcher_name,
+      researcher_bio: typeof researcher_bio === 'string' && researcher_bio.trim() || current.researcher_bio
+    };
+    await dataAccess.saveResearcher(user_name, gameId, researcher);
+    const token = jwt.sign({ user_name }, JWT_SECRET, { expiresIn: '7d' });
+    return success({ token, joined: true, profile: { user_name, ...researcher, created_at: existing.created_at, updated_at: existing.updated_at } });
+  }
   const email = normalizeEmail(body.email);
   if (email === null) return error('Please enter a valid email address', 400);
   const preferences = getEmailPreferences(body);
@@ -244,22 +264,22 @@ async function handleSignup(event) {
   }
   if (password.length < 8) return error('Password must be at least 8 characters', 400);
   if (password !== repeat_password) return error('Passwords must match', 400);
-  const existing = await getProfile(user_name);
-  if (existing) return error('User already exists', 409);
   const passwordHash = bcrypt.hashSync(password, 12);
   const now = new Date().toISOString();
   const profile = {
     user_name,
     researcher_name,
     researcher_bio,
-    game_id: gameId,
     email: email || '',
     ...preferences,
     password_hash: passwordHash,
     created_at: now,
     updated_at: now
   };
-  await dynamodb.put({ TableName: TABLE_PROFILES, Item: profile, ConditionExpression: 'attribute_not_exists(user_name)' }).promise();
+  await dynamodb.transactWrite({ TransactItems: [
+    { Put: { TableName: TABLE_PROFILES, Item: profile, ConditionExpression: 'attribute_not_exists(user_name)' } },
+    { Put: { TableName: TABLE_RESEARCHERS, Item: { user_name, game_id: gameId, researcher_name, researcher_bio, created_at: now, updated_at: now } } }
+  ] }).promise();
   const token = jwt.sign({ user_name }, JWT_SECRET, { expiresIn: '7d' });
   const warning = await sendWelcome(email, preferences);
   return success({ token, profile: { user_name, researcher_name, researcher_bio, email: profile.email, ...preferences, created_at: now, updated_at: now }, ...(warning && { warning }) });
@@ -282,7 +302,9 @@ async function handleGetWords(event) {
   const words = await listWordsByGame(gameId);
   const profiles = await dataAccess.getProfilesByUserNames((words || []).map((word) => word.user_name));
   const profilesByUserName = Object.fromEntries(profiles.filter(Boolean).map((profile) => [profile.user_name, profile]));
-  return success({ words: decorateWordsWithResearcherNames(words, profilesByUserName) });
+  const researchers = await dataAccess.getResearchersByGame(gameId, (words || []).map((word) => word.user_name));
+  const researchersByUserName = Object.fromEntries(researchers.map((researcher) => [researcher.user_name, researcher]));
+  return success({ words: decorateWordsWithResearcherNames(words, profilesByUserName, researchersByUserName) });
 }
 
 async function handleGetWord(event) {
@@ -305,11 +327,8 @@ async function handleGetWord(event) {
     return error('Word not found', 404);
   }
   const previousWord = word.previous_word_id ? await getWord(word.previous_word_id) : null;
-  const profile = await getProfile(word.user_name);
-  debugLog("Profile: ", profile)
-  var researcher_name = "TBD";
-  if(profile?.researcher_name) researcher_name = profile?.researcher_name;
-  debugLog("Profile: ", researcher_name)
+  const [profile, researcher] = await Promise.all([getProfile(word.user_name), dataAccess.getResearcher(word.user_name, word.game_id)]);
+  const researcher_name = resolveResearcher(profile, researcher).researcher_name || 'TBD';
   return success({ 
     word: { 
       ...word,
@@ -450,13 +469,17 @@ async function handleGetProfile(event) {
   const profile = await getProfile(userName);
   if (!profile) return error('Profile not found', 404);
   const gameId = normalizeGameId(event.queryStringParameters && event.queryStringParameters.game_id);
-  const authoredWords = await dataAccess.listWordsByUserNameAndGame(userName, gameId);
+  const [authoredWords, researcher] = await Promise.all([
+    dataAccess.listWordsByUserNameAndGame(userName, gameId),
+    dataAccess.getResearcher(userName, gameId)
+  ]);
+  const { researcher_name, researcher_bio } = resolveResearcher(profile, researcher);
   const user = getCurrentUser(event);
   const ownEmail = user && user.user_name === profile.user_name ? { email: profile.email || '', ...getEmailPreferences({}, profile) } : {};
   const isOwnAdmin = user && user.user_name === profile.user_name && profile.admin === true;
   const game = isOwnAdmin ? await getGame(gameId) : null;
   const admin = isOwnAdmin ? { game: game ? { game_id: game.game_id, name: game.name || game.game_id, current_letter: game.current_letter || 'A', completed: game.completed === true } : null } : undefined;
-  const response = success({ profile: { user_name: profile.user_name, researcher_name: profile.researcher_name, researcher_bio: profile.researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at, ...ownEmail }, words: authoredWords, ...(admin && { admin }) });
+  const response = success({ profile: { user_name: profile.user_name, researcher_name, researcher_bio, created_at: profile.created_at, updated_at: profile.updated_at, ...ownEmail }, words: authoredWords, ...(admin && { admin }) });
   response.headers['Cache-Control'] = 'no-store';
   return response;
 }
@@ -531,11 +554,15 @@ async function handleUpdateProfile(event) {
   const previousPreferences = getEmailPreferences({}, existing);
   const preferences = getEmailPreferences(body, existing);
   if (!preferences) return error('Invalid email preferences', 400);
-  const updates = {
-    researcher_name: body.researcher_name || existing.researcher_name,
-    researcher_bio: body.researcher_bio || existing.researcher_bio,
-    updated_at: new Date().toISOString()
+  // Inside a game, name and bio belong to that game's researcher; otherwise to the account.
+  const gameId = typeof body.game_id === 'string' ? normalizeGameId(body.game_id) : 'default';
+  const perGame = gameId !== 'default';
+  const current = perGame ? resolveResearcher(existing, await dataAccess.getResearcher(userName, gameId)) : existing;
+  const researcher = {
+    researcher_name: body.researcher_name || current.researcher_name,
+    researcher_bio: body.researcher_bio || current.researcher_bio
   };
+  const updates = { ...(!perGame && researcher), updated_at: new Date().toISOString() };
   if (email !== undefined) updates.email = email;
   for (const key of Object.keys(preferences)) {
     if (body[key] !== undefined) updates[key] = preferences[key];
@@ -546,11 +573,12 @@ async function handleUpdateProfile(event) {
     updates.password_hash = bcrypt.hashSync(body.password, 12);
   }
   await dataAccess.updateProfile(userName, updates);
+  if (perGame) await dataAccess.saveResearcher(userName, gameId, researcher);
   const savedEmail = email === undefined ? (existing.email || '') : email;
   const changed = savedEmail !== (existing.email || '') ||
     Object.keys(preferences).some((key) => preferences[key] !== previousPreferences[key]);
   const warning = changed ? await sendWelcome(savedEmail, preferences) : undefined;
-  return success({ profile: { user_name: userName, researcher_name: updates.researcher_name, researcher_bio: updates.researcher_bio, email: savedEmail, ...preferences, updated_at: updates.updated_at }, ...(warning && { warning }) });
+  return success({ profile: { user_name: userName, ...researcher, email: savedEmail, ...preferences, updated_at: updates.updated_at }, ...(warning && { warning }) });
 }
 
 async function route(event) {

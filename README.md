@@ -21,8 +21,20 @@ the preferences. Addresses are not verified. If SES rejects
 the send, the profile is saved and the player is warned. Local mock API saves
 addresses but does not send mail.
 
-New profiles must be created from an existing, non-default game URL. The profile
-is associated with that game; visiting the example game does not permit signup.
+New profiles must be created from an existing, non-default game URL; visiting
+the example game does not permit signup.
+A player can join additional games with the same account: on the new game's
+signup page, enter the existing user name and password. Leave the researcher
+name and bio blank to reuse the current ones, or fill them in to use a different
+researcher in that game. Each game's researcher name and bio live in the
+`lexicon-2026-researchers` table (key `user_name` + `game_id`; a row means the
+player belongs to that game). Profile pages, word lists and word emails use the
+game's researcher, and a profile page lists only that game's words. Editing a
+profile from inside a game changes only that game's researcher. Email address,
+notification preferences, password and admin status are account-wide. Word and
+round emails go only to opted-in members of that game, and word emails name the
+game. Profiles created before this table existed (with a `game_id` attribute)
+keep working as members of that game.
 For local development, use `http://localhost:3000/?game_id=local`.
 
 An admin viewing their own profile can end the current game's round manually.
