@@ -10,6 +10,18 @@ const access = handler.__test__.dataAccess;
 const auth = (name) => ({ Authorization: `Bearer ${jwt.sign({ user_name: name }, process.env.JWT_SECRET || 'dev-secret')}` });
 const event = (name, body) => ({ headers: name ? auth(name) : {}, body: JSON.stringify(body) });
 
+function assertBoxedBody(body) {
+  const textLines = body.Text.Data.split('\n');
+  assert.ok(textLines.length >= 3);
+  assert.ok(textLines.every((line) => line.length === 40));
+  const entities = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
+  const htmlText = body.Html.Data.replace(/<[^>]*>/g, '').replace(/&(amp|lt|gt|quot|#39);/g, (_, name) => entities[name]);
+  const htmlLines = htmlText.split('\n');
+  assert.ok(htmlLines.every((line) => line.length === 40));
+  assert.equal(htmlLines[0], textLines[0]);
+  assert.equal(htmlLines.at(-1), textLines.at(-1));
+}
+
 test('signup rejects the example and nonexistent games before saving', async (t) => {
   const getGame = t.mock.method(access, 'getGame', async () => null);
   const put = t.mock.method(handler.__test__.dynamodb, 'put', () => { throw new Error('unexpected write'); });
@@ -121,10 +133,11 @@ test('round email links to the new letter; final round says game complete', asyn
   const email = send.mock.calls[0].arguments[0].input;
   assert.deepEqual(email.Destination.ToAddresses, ['player@example.com']);
   assert.equal(email.Message.Subject.Data, '[Lexicon] Time for a new letter');
-  assert.equal(email.Message.Body.Html.Data, 'Good news! We are moving on to the B words! <a href="https://example.test/index.html?game_id=game+%26+one">Click here</a> to add a new B word! Please remember to defined previously-existing but undefined B words before creating a brand new entry.');
-  assert.match(email.Message.Body.Text.Data, /game_id=game\+%26\+one/);
+  assertBoxedBody(email.Message.Body);
+  assert.match(email.Message.Body.Html.Data, /href="https:\/\/example\.test\/index\.html\?game_id=game\+%26\+one"/);
+  assert.match(email.Message.Body.Text.Data, /Good news!/);
   await roundEmail.send('player@example.com', 'Game', 'Z', null);
-  assert.match(send.mock.calls[1].arguments[0].input.Message.Body.Text.Data, /Game is complete/);
+  assert.match(send.mock.calls[1].arguments[0].input.Message.Body.Text.Data, /complete\./);
 });
 
 test('mock API keeps admin access private and rejects stale round requests', async (t) => {

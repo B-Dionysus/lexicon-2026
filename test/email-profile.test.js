@@ -8,6 +8,18 @@ const { normalizeEmail, welcomeEmail } = require('../src/lib/email');
 const access = handler.__test__.dataAccess;
 const auth = (name) => ({ Authorization: 'Bearer ' + jwt.sign({ user_name: name }, process.env.JWT_SECRET || 'dev-secret') });
 
+function assertBoxedBody(body) {
+  const textLines = body.Text.Data.split('\n');
+  assert.ok(textLines.length >= 3);
+  assert.ok(textLines.every((line) => line.length === 40));
+  const entities = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
+  const htmlText = body.Html.Data.replace(/<[^>]*>/g, '').replace(/&(amp|lt|gt|quot|#39);/g, (_, name) => entities[name]);
+  const htmlLines = htmlText.split('\n');
+  assert.ok(htmlLines.every((line) => line.length === 40));
+  assert.equal(htmlLines[0], textLines[0]);
+  assert.equal(htmlLines.at(-1), textLines.at(-1));
+}
+
 test('email addresses are optional and reject invalid input', () => {
   assert.equal(normalizeEmail(undefined), undefined);
   assert.equal(normalizeEmail('  '), '');
@@ -31,7 +43,29 @@ test('welcome email uses the configured SES sender and recipient', async (t) => 
   assert.equal(command.input.Source, 'sender@example.com');
   assert.deepEqual(command.input.Destination.ToAddresses, ['player@example.com']);
   assert.match(command.input.Message.Subject.Data, /Welcome/);
-  assert.match(command.input.Message.Body.Text.Data, /We will email you every time a player submits a new word\./);
+  assertBoxedBody(command.input.Message.Body);
+  assert.match(command.input.Message.Body.Text.Data, /We will email you every time/);
+});
+
+test('email borders vary across ten styles and stay within 40 characters', async (t) => {
+  const previous = process.env.EMAIL_FROM;
+  process.env.EMAIL_FROM = 'sender@example.com';
+  t.after(() => {
+    if (previous === undefined) delete process.env.EMAIL_FROM;
+    else process.env.EMAIL_FROM = previous;
+  });
+  let randomValue = 0;
+  t.mock.method(Math, 'random', () => randomValue);
+  const send = t.mock.method(SESClient.prototype, 'send', async () => ({}));
+
+  for (let index = 0; index < 10; index++) {
+    randomValue = index / 10;
+    await welcomeEmail.send('player@example.com', { notify_word_created: true, notify_round_complete: false });
+  }
+
+  const bodies = send.mock.calls.map((call) => call.arguments[0].input.Message.Body);
+  assert.equal(new Set(bodies.map((body) => body.Text.Data.split('\n')[0])).size, 10);
+  bodies.forEach(assertBoxedBody);
 });
 
 test('welcome email describes each combination of notification preferences', async (t) => {
@@ -50,8 +84,11 @@ test('welcome email describes each combination of notification preferences', asy
   ];
   for (const [notify_word_created, notify_round_complete, message] of cases) {
     await welcomeEmail.send('player@example.com', { notify_word_created, notify_round_complete });
-    const body = send.mock.calls.at(-1).arguments[0].input.Message.Body.Text.Data;
-    assert.equal(body, `Welcome to Lexicon 2026!\n\nThanks for joining our collaborative dictionary game. We look forward to seeing what you create.\n\n${message}\n\nThe Lexicon team`);
+    const body = send.mock.calls.at(-1).arguments[0].input.Message.Body;
+    assertBoxedBody(body);
+    const content = body.Text.Data.split('\n').slice(1, -1)
+      .map((line) => line.slice(2, -2).trim()).join(' ').replace(/\s+/g, ' ');
+    assert.ok(content.includes(message));
   }
 });
 

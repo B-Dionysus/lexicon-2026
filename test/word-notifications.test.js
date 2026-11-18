@@ -9,6 +9,18 @@ const { wordEmail } = require('../src/lib/email');
 const access = handler.__test__.dataAccess;
 const headers = { Authorization: `Bearer ${jwt.sign({ user_name: 'writer' }, process.env.JWT_SECRET || 'dev-secret')}` };
 
+function assertBoxedBody(body) {
+  const textLines = body.Text.Data.split('\n');
+  assert.ok(textLines.length >= 3);
+  assert.ok(textLines.every((line) => line.length === 40));
+  const entities = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
+  const htmlText = body.Html.Data.replace(/<[^>]*>/g, '').replace(/&(amp|lt|gt|quot|#39);/g, (_, name) => entities[name]);
+  const htmlLines = htmlText.split('\n');
+  assert.ok(htmlLines.every((line) => line.length === 40));
+  assert.equal(htmlLines[0], textLines[0]);
+  assert.equal(htmlLines.at(-1), textLines.at(-1));
+}
+
 test('word email uses requested copy, escaped linked names and game-specific URLs', async (t) => {
   const previous = { email: process.env.EMAIL_FROM, site: process.env.SITE_URL };
   process.env.EMAIL_FROM = 'sender@example.com';
@@ -22,8 +34,10 @@ test('word email uses requested copy, escaped linked names and game-specific URL
   const email = send.mock.calls[0].arguments[0].input;
   assert.deepEqual(email.Destination.ToAddresses, ['reader@example.com']);
   assert.equal(email.Message.Subject.Data, '[Lexicon] Example Ada & Co has added a new word to the lexicon!');
-  assert.equal(email.Message.Body.Html.Data, 'Good news! Another word has been added to the Lexicon: <a href="https://example.test/defined-word.html?word_id=word+1&amp;game_id=a%26b">&lt;word&gt;</a> created by <a href="https://example.test/profile.html?user_name=writer+%26+co&amp;game_id=a%26b">Ada &amp; Co</a>');
-  assert.match(email.Message.Body.Text.Data, /defined-word\.html\?word_id=word\+1&game_id=a%26b/);
+  assertBoxedBody(email.Message.Body);
+  assert.match(email.Message.Body.Html.Data, /href="https:\/\/example\.test\/defined-word\.html\?word_id=word\+1&amp;game_id=a%26b"/);
+  assert.match(email.Message.Body.Html.Data, /href="https:\/\/example\.test\/profile\.html\?user_name=writer\+%26\+co&amp;game_id=a%26b"/);
+  assert.match(email.Message.Body.Text.Data, /Good news!/);
 });
 
 test('recipient scan selects only opted-in profiles for the specified game across pages', async () => {
