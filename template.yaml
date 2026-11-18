@@ -3,10 +3,10 @@ Transform: AWS::Serverless-2016-10-31
 Description: Lexicon 2026 serverless application
 
 Parameters:
-  JwtSecret:
+  JwtSecretParameterName:
     Type: String
-    NoEcho: true
-    Default: replace-me
+    Default: /lexicon-2026/jwt-secret
+    Description: Name of the SSM SecureString parameter holding the JWT signing secret
 
 Globals:
   # SAM's implicit API preserves the existing ServerlessRestApi logical ID.
@@ -23,7 +23,7 @@ Globals:
         WORDS_TABLE: lexicon-2026-words
         PROFILES_TABLE: lexicon-2026-profiles
         CACHE_SIGNALS_TABLE: lexicon-2026-cache-signals
-        JWT_SECRET: !Ref JwtSecret
+        JWT_SECRET_PARAMETER: !Ref JwtSecretParameterName
         EMAIL_FROM: lexicon@benjamindionys.us
         SITE_URL: https://lexicon-2026.sixbynine.com
 
@@ -42,6 +42,16 @@ Resources:
             TableName: !Ref CacheSignalsTable
         - DynamoDBCrudPolicy:
             TableName: lexicon-2026-games
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${JwtSecretParameterName}"
+            - Effect: Allow
+              Action: kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
         - Statement:
             - Effect: Allow
               Action: ses:SendEmail

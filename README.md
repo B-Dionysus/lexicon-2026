@@ -9,7 +9,10 @@ This repository contains a lightweight Lexicon 2026 implementation with:
 
 ## To do!
 - Support richer markup in definitions.
+- Store the JWT secret in SSM Parameter Store instead of a CloudFormation parameter (in progress).
 
+
+## Done!
 Definitions preserve line breaks entered in the editor on both the main page and the full definition page.
 
 Profiles can optionally include a private email address. A welcome email is sent
@@ -62,6 +65,12 @@ This signals all Lambda instances to reload that game's list on their next
 request; it does not clear the browser cache. The local mock API does not use
 this Lambda cache or provide the invalidation endpoint.
 
+## Tests and CI
+
+`npm test` runs the suite; no AWS credentials are needed. A GitHub Actions
+workflow (`.github/workflows/test.yml`) runs it on Node 22 for every pull
+request and push to `main`. It does not deploy.
+
 ## Run locally
 
 ```bash
@@ -84,8 +93,20 @@ AWS_PROFILE=lexicon ./deploy.sh
 
 The script builds the Lambda and its dependencies, targets the existing
 `lexicon-2026` stack, and asks for confirmation of the CloudFormation change
-set. It keeps the stack's existing JWT secret; do not use it to create a new
-stack. Review the change set for replacements or deletions before confirming.
+set. The JWT signing secret is read at runtime from the SSM SecureString
+parameter `/lexicon-2026/jwt-secret` (the `JwtSecretParameterName` template
+parameter), which must exist before deploying. Create it once:
+
+```bash
+aws ssm put-parameter --name /lexicon-2026/jwt-secret --type SecureString \
+  --value '<secret>' --profile lexicon --region us-east-1
+```
+
+Reuse the secret currently in the Lambda's `JWT_SECRET` environment variable
+so existing sessions stay valid; a new value signs everyone out. If the
+parameter is missing or unreadable, the API returns 500 rather than falling back
+to a default. Do not use the script to create a new stack. Review the change set
+for replacements or deletions before confirming.
 The API is implicit so SAM retains the existing `ServerlessRestApi` logical ID;
 renaming it would replace the API endpoint.
 

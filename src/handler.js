@@ -9,6 +9,7 @@ const {
   UpdateCommand,
   TransactWriteCommand
 } = require('@aws-sdk/lib-dynamodb');
+const { SSMClient, GetParameterCommand } = require('@aws-sdk/client-ssm');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
@@ -68,7 +69,26 @@ const TABLE_WORDS = process.env.WORDS_TABLE || 'lexicon-2026-words';
 const TABLE_GAMES = process.env.GAMES_TABLE || 'lexicon-2026-games';
 const TABLE_PROFILES = process.env.PROFILES_TABLE || 'lexicon-2026-profiles';
 const TABLE_CACHE_SIGNALS = process.env.CACHE_SIGNALS_TABLE || 'lexicon-2026-cache-signals';
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+// When JWT_SECRET_PARAMETER is set, the secret comes from SSM and there is no fallback.
+let JWT_SECRET = process.env.JWT_SECRET_PARAMETER ? undefined : (process.env.JWT_SECRET || 'dev-secret');
+const ssm = new SSMClient({ region: process.env.AWS_REGION || 'us-east-1' });
+let jwtSecretLoad;
+
+function loadJwtSecret() {
+  const name = process.env.JWT_SECRET_PARAMETER;
+  if (!name || JWT_SECRET) return Promise.resolve();
+  jwtSecretLoad ||= ssm.send(new GetParameterCommand({ Name: name, WithDecryption: true }))
+    .then(({ Parameter }) => {
+      if (!Parameter || !Parameter.Value) throw new Error('empty parameter');
+      JWT_SECRET = Parameter.Value;
+    })
+    .catch((err) => {
+      jwtSecretLoad = undefined;
+      console.error('[LAMBDA ERROR] Could not load JWT secret from SSM:', err && err.name);
+      throw new Error('Server configuration error');
+    });
+  return jwtSecretLoad;
+}
 
 // Debug helper: unified logging prefix for Lambda
 function debugLog(...args) {
@@ -580,6 +600,7 @@ async function route(event) {
 
 exports.handler = async (event) => {
   try {
+    await loadJwtSecret();
     return await route(event);
   } catch (err) {
     debugLog('handler caught error', err && err.message);
