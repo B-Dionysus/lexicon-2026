@@ -82,10 +82,19 @@ Then open http://localhost:3000.
 
 ## Deploy to AWS
 
+Deployment has two independent parts. Run whichever matches what you changed:
+
+| Changed | Deploy |
+| --- | --- |
+| `src/`, `template.yaml` (backend) | [Backend](#backend-lambda-api-and-tables) |
+| `public/` (static site) | [Frontend](#frontend-static-site) |
+
 Install the AWS and SAM CLIs and authenticate the `lexicon` AWS profile. Run
 `aws sso login --profile lexicon --use-device-code` if the profile uses IAM Identity Center.
 
-To update the existing backend stack, run:
+### Backend (Lambda, API and tables)
+
+`./deploy.sh` deploys only the backend. It does not upload `public/`.
 
 ```bash
 AWS_PROFILE=lexicon ./deploy.sh
@@ -93,24 +102,30 @@ AWS_PROFILE=lexicon ./deploy.sh
 
 The script builds the Lambda and its dependencies, targets the existing
 `lexicon-2026` stack, and asks for confirmation of the CloudFormation change
-set. The JWT signing secret is read at runtime from the SSM SecureString
-parameter `/lexicon-2026/jwt-secret` (the `JwtSecretParameterName` template
-parameter), which must exist before deploying. Create it once:
+set. Do not use it to create a new stack. Review the change set for
+replacements or deletions before confirming. The API is implicit so SAM retains
+the existing `ServerlessRestApi` logical ID; renaming it would replace the API
+endpoint.
+
+The JWT signing secret is read at runtime from the SSM SecureString parameter
+`/lexicon-2026/jwt-secret` (the `JwtSecretParameterName` template parameter),
+which must exist before deploying. Create it once:
 
 ```bash
 aws ssm put-parameter --name /lexicon-2026/jwt-secret --type SecureString \
   --value '<secret>' --profile lexicon --region us-east-1
 ```
 
-Reuse the secret currently in the Lambda's `JWT_SECRET` environment variable
-so existing sessions stay valid; a new value signs everyone out. If the
-parameter is missing or unreadable, the API returns 500 rather than falling back
-to a default. Do not use the script to create a new stack. Review the change set
-for replacements or deletions before confirming.
-The API is implicit so SAM retains the existing `ServerlessRestApi` logical ID;
-renaming it would replace the API endpoint.
+When migrating, reuse the secret currently in the Lambda's `JWT_SECRET`
+environment variable so existing sessions stay valid; a new value signs everyone
+out. If the parameter is missing or unreadable, the API returns 500 rather than
+falling back to a default.
 
-To update the static site separately, review the files to be deleted first:
+### Frontend (static site)
+
+`aws s3 sync` uploads `public/` to the site bucket. It is separate from
+`./deploy.sh`, so run it whenever `public/` changes. Review the files to be
+deleted first:
 
 ```bash
 aws s3 sync public/ s3://lexicon-2026.sixbynine.com --delete --dryrun --profile lexicon
